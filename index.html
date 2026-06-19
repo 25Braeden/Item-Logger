@@ -1,0 +1,743 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Supply Audit Log</title>
+<style>
+  :root{
+    --bg:#F5F8F9;
+    --surface:#FFFFFF;
+    --ink:#142B33;
+    --ink-soft:#5C7B85;
+    --line:#D7E2E5;
+    --brand:#1B4965;
+    --brand-soft:#E3EDF1;
+    --found:#2A9D8F;
+    --found-soft:#E2F2EF;
+    --flag:#C9722E;
+    --flag-soft:#FBEBDD;
+    --danger:#B6442F;
+    --danger-soft:#F8E7E2;
+    --radius:10px;
+    --font-body:-apple-system,"Segoe UI","Helvetica Neue",Arial,sans-serif;
+    --font-mono:"SF Mono","Roboto Mono",Consolas,monospace;
+  }
+  *{box-sizing:border-box;}
+  body{
+    margin:0;
+    background:var(--bg);
+    color:var(--ink);
+    font-family:var(--font-body);
+    -webkit-font-smoothing:antialiased;
+  }
+  header{
+    background:var(--brand);
+    color:#fff;
+    padding:18px 20px 16px;
+  }
+  header h1{
+    margin:0;
+    font-size:19px;
+    font-weight:700;
+    letter-spacing:-0.01em;
+  }
+  header p{
+    margin:3px 0 0;
+    font-size:12.5px;
+    color:#C9DDE6;
+  }
+  main{
+    max-width:640px;
+    margin:0 auto;
+    padding:18px 16px 60px;
+  }
+  .card{
+    background:var(--surface);
+    border:1px solid var(--line);
+    border-radius:var(--radius);
+    padding:18px;
+    margin-bottom:16px;
+  }
+  .scan-zone label{
+    display:block;
+    font-size:12px;
+    font-weight:600;
+    text-transform:uppercase;
+    letter-spacing:0.06em;
+    color:var(--ink-soft);
+    margin-bottom:8px;
+  }
+  .scan-row{
+    display:flex;
+    gap:8px;
+  }
+  #refInput{
+    flex:1;
+    font-family:var(--font-mono);
+    font-size:24px;
+    letter-spacing:0.04em;
+    padding:14px 14px;
+    border:2px solid var(--line);
+    border-radius:8px;
+    background:#0F2530;
+    color:#7FE3D2;
+    transition:border-color 0.15s ease, box-shadow 0.15s ease;
+  }
+  #refInput::placeholder{ color:#4F7079; }
+  #refInput:focus{
+    outline:none;
+    border-color:var(--found);
+    box-shadow:0 0 0 3px var(--found-soft);
+  }
+  #lookupBtn{
+    padding:0 20px;
+    border:none;
+    border-radius:8px;
+    background:var(--brand);
+    color:#fff;
+    font-size:14px;
+    font-weight:600;
+    cursor:pointer;
+  }
+  #lookupBtn:active{ transform:translateY(1px); }
+  #lookupBtn:disabled{ opacity:0.6; cursor:default; }
+  .hint{
+    font-size:12px;
+    color:var(--ink-soft);
+    margin-top:8px;
+  }
+  .status{
+    margin-top:12px;
+    font-size:13px;
+    padding:10px 12px;
+    border-radius:8px;
+    display:none;
+  }
+  .status.show{ display:block; }
+  .status.searching{ background:var(--brand-soft); color:var(--brand); }
+  .status.warn{ background:var(--flag-soft); color:var(--flag); }
+  .status.err{ background:var(--danger-soft); color:var(--danger); }
+
+  #resultArea{ display:none; }
+  #resultArea.show{ display:block; animation:slideIn 0.18s ease; }
+  @media (prefers-reduced-motion: reduce){ #resultArea.show{ animation:none; } }
+  @keyframes slideIn{ from{opacity:0; transform:translateY(-4px);} to{opacity:1; transform:translateY(0);} }
+
+  .match-card{
+    background:var(--found-soft);
+    border:1px solid #BFE3DC;
+    border-radius:8px;
+    padding:12px 14px;
+    margin-bottom:14px;
+  }
+  .match-card .label{
+    font-size:11px;
+    font-weight:700;
+    text-transform:uppercase;
+    letter-spacing:0.06em;
+    color:var(--found);
+  }
+  .match-card h3{
+    margin:4px 0 2px;
+    font-size:16px;
+  }
+  .match-card .sub{
+    font-size:13px;
+    color:var(--ink-soft);
+  }
+  .match-card .ref{
+    font-family:var(--font-mono);
+    font-size:12px;
+    color:var(--ink-soft);
+    margin-top:6px;
+  }
+  .candidates{ margin-top:10px; display:flex; flex-direction:column; gap:6px; }
+  .candidate-btn{
+    text-align:left;
+    background:#fff;
+    border:1px solid var(--line);
+    border-radius:6px;
+    padding:8px 10px;
+    font-size:13px;
+    cursor:pointer;
+  }
+  .candidate-btn:hover{ border-color:var(--found); }
+
+  .field-grid{
+    display:grid;
+    grid-template-columns:1fr 1fr;
+    gap:10px;
+    margin-top:4px;
+  }
+  .field-grid .full{ grid-column:1 / -1; }
+  .field label{
+    display:block;
+    font-size:11.5px;
+    font-weight:600;
+    color:var(--ink-soft);
+    margin-bottom:4px;
+  }
+  .field input, .field select, .field textarea{
+    width:100%;
+    font-size:14px;
+    padding:9px 10px;
+    border:1px solid var(--line);
+    border-radius:7px;
+    font-family:var(--font-body);
+    color:var(--ink);
+    background:#fff;
+  }
+  .field textarea{ resize:vertical; min-height:38px; }
+  .field input:focus, .field select:focus, .field textarea:focus{
+    outline:none;
+    border-color:var(--brand);
+    box-shadow:0 0 0 3px var(--brand-soft);
+  }
+
+  .actions{
+    display:flex;
+    gap:8px;
+    margin-top:14px;
+  }
+  .btn{
+    flex:1;
+    padding:11px 14px;
+    border-radius:8px;
+    border:none;
+    font-size:14px;
+    font-weight:600;
+    cursor:pointer;
+  }
+  .btn-primary{ background:var(--found); color:#fff; }
+  .btn-secondary{ background:var(--brand-soft); color:var(--brand); }
+  .btn-text{
+    background:none;
+    border:none;
+    color:var(--ink-soft);
+    font-size:12.5px;
+    cursor:pointer;
+    text-decoration:underline;
+    padding:0;
+  }
+
+  .log-header{
+    display:flex;
+    align-items:baseline;
+    justify-content:space-between;
+    margin-bottom:10px;
+  }
+  .log-header h2{ font-size:15px; margin:0; }
+  .log-header .count{ font-size:12.5px; color:var(--ink-soft); }
+
+  table{ width:100%; border-collapse:collapse; font-size:12.5px; }
+  th{
+    text-align:left;
+    font-size:10.5px;
+    text-transform:uppercase;
+    letter-spacing:0.04em;
+    color:var(--ink-soft);
+    padding:6px 6px;
+    border-bottom:1px solid var(--line);
+  }
+  td{
+    padding:8px 6px;
+    border-bottom:1px solid var(--line);
+    vertical-align:top;
+  }
+  td.item-name{ font-weight:600; }
+  td.ref-cell{ font-family:var(--font-mono); color:var(--ink-soft); }
+  .del-btn{
+    background:none;
+    border:none;
+    color:var(--danger);
+    cursor:pointer;
+    font-size:12px;
+  }
+  .empty-row td{ color:var(--ink-soft); text-align:center; padding:18px 6px; font-style:italic; }
+
+  .export-bar{
+    display:flex;
+    gap:8px;
+    margin-top:14px;
+  }
+  .export-bar .btn-secondary{ background:var(--brand); color:#fff; }
+  .export-bar .btn-danger{ background:var(--danger-soft); color:var(--danger); flex:0 0 auto; padding:11px 16px; }
+
+  footer{
+    max-width:640px;
+    margin:0 auto;
+    padding:0 16px 40px;
+    font-size:11.5px;
+    color:var(--ink-soft);
+    text-align:center;
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>Supply Audit Log</h1>
+  <p>Mercy Medical Center · Quality Dept · Expired/non-conforming supply checks</p>
+</header>
+
+<main>
+
+  <div class="card scan-zone">
+    <label for="refInput">Reference / catalog number</label>
+    <div class="scan-row">
+      <input id="refInput" type="text" inputmode="numeric" autocomplete="off" placeholder="e.g. 367988" autofocus>
+      <button id="lookupBtn">Look up</button>
+    </div>
+    <div class="hint">Looks this up in the FDA's public device database (GUDID). Press Enter or tap Look up.</div>
+    <div id="statusBox" class="status"></div>
+  </div>
+
+  <div id="resultArea" class="card">
+    <div id="matchSlot"></div>
+
+    <div class="field-grid">
+      <div class="field full" id="manualNameField" style="display:none;">
+        <label for="manualName">Item name</label>
+        <input id="manualName" type="text" placeholder="Enter item name">
+      </div>
+      <div class="field">
+        <label for="locationInput">Location found</label>
+        <input id="locationInput" list="locationSuggestions" placeholder="e.g. 3rd Floor Supply Rm">
+        <datalist id="locationSuggestions"></datalist>
+      </div>
+      <div class="field">
+        <label for="expInput">Expiration date</label>
+        <input id="expInput" type="date">
+      </div>
+      <div class="field">
+        <label for="qtyInput">Quantity</label>
+        <input id="qtyInput" type="number" min="1" value="1">
+      </div>
+      <div class="field">
+        <label for="reasonInput">Reason flagged</label>
+        <select id="reasonInput">
+          <option>Expired</option>
+          <option>Near expiry</option>
+          <option>Damaged / compromised packaging</option>
+          <option>Recalled</option>
+          <option>Other</option>
+        </select>
+      </div>
+      <div class="field full">
+        <label for="loggedByInput">Logged by (initials)</label>
+        <input id="loggedByInput" placeholder="e.g. JT">
+      </div>
+      <div class="field full">
+        <label for="notesInput">Notes (optional)</label>
+        <textarea id="notesInput" rows="2" placeholder="Anything else worth flagging"></textarea>
+      </div>
+    </div>
+
+    <div class="actions">
+      <button class="btn btn-primary" id="logBtn">Log item</button>
+      <button class="btn btn-secondary" id="cancelBtn">Cancel</button>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="log-header">
+      <h2>Today's log</h2>
+      <span class="count" id="entryCount">0 items</span>
+    </div>
+    <table>
+      <thead>
+        <tr>
+          <th>Item</th>
+          <th>Ref #</th>
+          <th>Location</th>
+          <th>Exp</th>
+          <th>Qty</th>
+          <th></th>
+        </tr>
+      </thead>
+      <tbody id="logTableBody">
+        <tr class="empty-row"><td colspan="6">No items logged yet — scan a reference number above to get started.</td></tr>
+      </tbody>
+    </table>
+
+    <div class="export-bar">
+      <button class="btn btn-secondary" id="exportBtn">Export CSV</button>
+      <button class="btn btn-danger" id="clearBtn">Clear log</button>
+    </div>
+  </div>
+
+</main>
+
+<footer>
+  Stored locally in this browser. Export to CSV regularly to keep a backup / share with your manager.
+</footer>
+
+<script>
+(function(){
+  "use strict";
+
+  // ---------- storage (plain browser localStorage — this is a standalone file meant to run
+  // in a normal browser tab on your laptop, not inside Claude's chat, so we use localStorage
+  // rather than any chat-only storage API. Falls back to in-memory if storage is blocked.) ----------
+  var STORE_KEY = "supplyAuditLog.entries";
+  var SETTINGS_KEY = "supplyAuditLog.settings";
+  var memoryFallback = { entries: [], settings: {} };
+  var storageBlocked = false;
+
+  function loadEntries(){
+    try{
+      var raw = window.localStorage.getItem(STORE_KEY);
+      return raw ? JSON.parse(raw) : [];
+    }catch(e){
+      storageBlocked = true;
+      return memoryFallback.entries;
+    }
+  }
+  function saveEntries(list){
+    try{
+      window.localStorage.setItem(STORE_KEY, JSON.stringify(list));
+    }catch(e){
+      storageBlocked = true;
+      memoryFallback.entries = list;
+    }
+  }
+  function loadSettings(){
+    try{
+      var raw = window.localStorage.getItem(SETTINGS_KEY);
+      return raw ? JSON.parse(raw) : {};
+    }catch(e){ return memoryFallback.settings; }
+  }
+  function saveSettings(s){
+    try{ window.localStorage.setItem(SETTINGS_KEY, JSON.stringify(s)); }
+    catch(e){ memoryFallback.settings = s; }
+  }
+
+  var entries = loadEntries();
+  var settings = loadSettings();
+  var currentMatch = null; // populated after a successful lookup
+
+  // ---------- elements ----------
+  var refInput = document.getElementById("refInput");
+  var lookupBtn = document.getElementById("lookupBtn");
+  var statusBox = document.getElementById("statusBox");
+  var resultArea = document.getElementById("resultArea");
+  var matchSlot = document.getElementById("matchSlot");
+  var manualNameField = document.getElementById("manualNameField");
+  var manualName = document.getElementById("manualName");
+  var locationInput = document.getElementById("locationInput");
+  var locationSuggestions = document.getElementById("locationSuggestions");
+  var expInput = document.getElementById("expInput");
+  var qtyInput = document.getElementById("qtyInput");
+  var reasonInput = document.getElementById("reasonInput");
+  var loggedByInput = document.getElementById("loggedByInput");
+  var notesInput = document.getElementById("notesInput");
+  var logBtn = document.getElementById("logBtn");
+  var cancelBtn = document.getElementById("cancelBtn");
+  var logTableBody = document.getElementById("logTableBody");
+  var entryCount = document.getElementById("entryCount");
+  var exportBtn = document.getElementById("exportBtn");
+  var clearBtn = document.getElementById("clearBtn");
+
+  // prefill remembered values
+  if(settings.loggedBy) loggedByInput.value = settings.loggedBy;
+  refreshLocationSuggestions();
+  renderTable();
+
+  // ---------- status helper ----------
+  function setStatus(msg, kind){
+    statusBox.textContent = msg;
+    statusBox.className = "status show" + (kind ? " " + kind : "");
+  }
+  function clearStatus(){
+    statusBox.className = "status";
+    statusBox.textContent = "";
+  }
+
+  // ---------- lookup ----------
+  function doLookup(){
+    var ref = refInput.value.trim();
+    if(!ref){ refInput.focus(); return; }
+    currentMatch = null;
+    lookupBtn.disabled = true;
+    setStatus("Searching FDA device database…", "searching");
+    resultArea.classList.remove("show");
+
+    var url = "https://api.fda.gov/device/udi.json?search="
+      + encodeURIComponent('catalog_number:"' + ref + '"') + "&limit=5";
+
+    fetch(url).then(function(res){
+      if(!res.ok){ throw new Error("status " + res.status); }
+      return res.json();
+    }).then(function(data){
+      lookupBtn.disabled = false;
+      var results = (data && data.results) ? data.results : [];
+      if(results.length === 0){
+        clearStatus();
+        setStatus("No match found for that reference number in the FDA device database. Enter the item details manually below.", "warn");
+        openManualEntry(ref);
+        return;
+      }
+      clearStatus();
+      if(results.length === 1){
+        selectMatch(results[0], ref);
+      }else{
+        showCandidates(results, ref);
+      }
+    }).catch(function(err){
+      lookupBtn.disabled = false;
+      clearStatus();
+      setStatus("Couldn't reach the lookup database (offline, or it's temporarily unavailable). Enter the item details manually below.", "err");
+      openManualEntry(ref);
+    });
+  }
+
+  function showCandidates(results, ref){
+    var html = '<div class="match-card"><div class="label">Multiple matches — pick one</div>' +
+      '<div class="candidates">';
+    results.forEach(function(r, i){
+      var name = r.brand_name || r.device_description || "Unnamed device";
+      var company = r.company_name || "Unknown manufacturer";
+      html += '<button type="button" class="candidate-btn" data-idx="' + i + '">' +
+        escapeHtml(name) + ' — ' + escapeHtml(company) + '</button>';
+    });
+    html += '</div><button type="button" class="btn-text" id="useManualLink" style="margin-top:8px;">None of these — enter manually</button></div>';
+    matchSlot.innerHTML = html;
+    resultArea.classList.add("show");
+    manualNameField.style.display = "none";
+
+    Array.prototype.forEach.call(matchSlot.querySelectorAll(".candidate-btn"), function(btn){
+      btn.addEventListener("click", function(){
+        selectMatch(results[parseInt(btn.getAttribute("data-idx"), 10)], ref);
+      });
+    });
+    document.getElementById("useManualLink").addEventListener("click", function(){
+      openManualEntry(ref);
+    });
+    focusFormFirstField();
+  }
+
+  function selectMatch(r, ref){
+    var name = r.brand_name || r.device_description || "Unnamed device";
+    var company = r.company_name || "Unknown manufacturer";
+    var catalog = r.catalog_number || r.version_or_model_number || ref;
+    currentMatch = { name: name, company: company, catalog: catalog, refEntered: ref };
+
+    matchSlot.innerHTML =
+      '<div class="match-card">' +
+        '<div class="label">Match found</div>' +
+        '<h3>' + escapeHtml(name) + '</h3>' +
+        '<div class="sub">' + escapeHtml(company) + '</div>' +
+        '<div class="ref">Catalog #' + escapeHtml(catalog) + '</div>' +
+      '</div>';
+    manualNameField.style.display = "none";
+    resultArea.classList.add("show");
+    focusFormFirstField();
+  }
+
+  function openManualEntry(ref){
+    currentMatch = { name: "", company: "", catalog: ref, refEntered: ref, manual: true };
+    matchSlot.innerHTML =
+      '<div class="match-card" style="background:var(--flag-soft); border-color:#EFD2B4;">' +
+        '<div class="label" style="color:var(--flag);">Manual entry</div>' +
+        '<div class="ref">Ref # entered: ' + escapeHtml(ref) + '</div>' +
+      '</div>';
+    manualNameField.style.display = "block";
+    manualName.value = "";
+    resultArea.classList.add("show");
+    manualName.focus();
+  }
+
+  function focusFormFirstField(){
+    locationInput.value = settings.lastLocation || "";
+    expInput.value = "";
+    qtyInput.value = 1;
+    reasonInput.value = "Expired";
+    notesInput.value = "";
+    locationInput.focus();
+  }
+
+  // ---------- logging ----------
+  function logItem(){
+    if(!currentMatch){ return; }
+    var name = currentMatch.manual ? manualName.value.trim() : currentMatch.name;
+    if(!name){
+      setStatus("Enter an item name before logging.", "warn");
+      manualName.focus();
+      return;
+    }
+    if(!locationInput.value.trim()){
+      setStatus("Enter where this item was found before logging.", "warn");
+      locationInput.focus();
+      return;
+    }
+
+    var refNumber = currentMatch.catalog || currentMatch.refEntered || "";
+    var expiration = expInput.value || "";
+    var qtyAdded = parseInt(qtyInput.value, 10) || 1;
+    var loc = locationInput.value.trim();
+    var notesVal = notesInput.value.trim();
+    var loggedByVal = loggedByInput.value.trim();
+    var now = new Date().toISOString();
+
+    // Merge into an existing row if the ref number + expiration date already match one logged today.
+    var existingIdx = entries.findIndex(function(e){
+      return e.refNumber === refNumber && e.expiration === expiration;
+    });
+
+    var mergedQty;
+    if(existingIdx > -1){
+      var e = entries[existingIdx];
+      e.quantity = (parseInt(e.quantity, 10) || 0) + qtyAdded;
+      mergedQty = e.quantity;
+      if(loc && e.locations.indexOf(loc) === -1) e.locations.push(loc);
+      if(notesVal && e.notes.indexOf(notesVal) === -1) e.notes.push(notesVal);
+      if(loggedByVal && e.loggedBy.indexOf(loggedByVal) === -1) e.loggedBy.push(loggedByVal);
+      e.reason = reasonInput.value;
+      e.lastLoggedAt = now;
+      e.timesLogged = (e.timesLogged || 1) + 1;
+      // bring the merged row to the top so it's easy to spot
+      entries.splice(existingIdx, 1);
+      entries.unshift(e);
+    }else{
+      entries.unshift({
+        id: Date.now() + "-" + Math.random().toString(36).slice(2,7),
+        itemName: name,
+        company: currentMatch.company || "",
+        refNumber: refNumber,
+        expiration: expiration,
+        quantity: qtyAdded,
+        reason: reasonInput.value,
+        locations: loc ? [loc] : [],
+        notes: notesVal ? [notesVal] : [],
+        loggedBy: loggedByVal ? [loggedByVal] : [],
+        firstLoggedAt: now,
+        lastLoggedAt: now,
+        timesLogged: 1
+      });
+    }
+    saveEntries(entries);
+
+    settings.loggedBy = loggedByVal;
+    settings.lastLocation = loc;
+    saveSettings(settings);
+    refreshLocationSuggestions();
+
+    renderTable();
+    resetScan();
+    setStatus(existingIdx > -1
+      ? "Merged — " + name + " is now logged at qty " + mergedQty + "."
+      : "Logged: " + name + ".", "searching");
+  }
+
+  function resetScan(){
+    currentMatch = null;
+    resultArea.classList.remove("show");
+    refInput.value = "";
+    refInput.focus();
+  }
+
+  document.getElementById("cancelBtn").addEventListener("click", resetScan);
+
+  // ---------- table rendering ----------
+  function renderTable(){
+    entryCount.textContent = entries.length + (entries.length === 1 ? " item" : " items");
+    if(entries.length === 0){
+      logTableBody.innerHTML = '<tr class="empty-row"><td colspan="6">No items logged yet — scan a reference number above to get started.</td></tr>';
+      return;
+    }
+    var rows = entries.map(function(e){
+      var scanTag = e.timesLogged > 1 ? ' <span style="color:var(--ink-soft); font-weight:400; font-style:italic;">(merged ×' + e.timesLogged + ')</span>' : '';
+      return '<tr>' +
+        '<td class="item-name">' + escapeHtml(e.itemName) + scanTag + (e.company ? '<br><span style="color:var(--ink-soft); font-weight:400;">' + escapeHtml(e.company) + '</span>' : '') + '</td>' +
+        '<td class="ref-cell">' + escapeHtml(e.refNumber) + '</td>' +
+        '<td>' + escapeHtml(e.locations.join(', ')) + '</td>' +
+        '<td>' + escapeHtml(e.expiration) + '</td>' +
+        '<td>' + escapeHtml(e.quantity) + '</td>' +
+        '<td><button class="del-btn" data-id="' + e.id + '">Remove</button></td>' +
+      '</tr>';
+    }).join("");
+    logTableBody.innerHTML = rows;
+    Array.prototype.forEach.call(logTableBody.querySelectorAll(".del-btn"), function(btn){
+      btn.addEventListener("click", function(){
+        var id = btn.getAttribute("data-id");
+        entries = entries.filter(function(e){ return e.id !== id; });
+        saveEntries(entries);
+        renderTable();
+      });
+    });
+  }
+
+  function refreshLocationSuggestions(){
+    var seen = {};
+    entries.forEach(function(e){
+      (e.locations || []).forEach(function(loc){ if(loc) seen[loc] = true; });
+    });
+    locationSuggestions.innerHTML = Object.keys(seen).map(function(loc){
+      return '<option value="' + escapeHtml(loc) + '"></option>';
+    }).join("");
+  }
+
+  // ---------- export ----------
+  function exportCSV(){
+    if(entries.length === 0){
+      setStatus("Nothing to export yet.", "warn");
+      return;
+    }
+    var headers = ["Date Logged","Item Name","Manufacturer","Reference #","Location Found","Expiration Date","Quantity","Reason","Notes","Logged By"];
+    var rows = entries.map(function(e){
+      return [
+        new Date(e.loggedAt).toLocaleString(),
+        e.itemName, e.company, e.refNumber, e.location, e.expiration, e.quantity, e.reason, e.notes, e.loggedBy
+      ];
+    });
+    var csv = [headers].concat(rows).map(function(row){
+      return row.map(csvField).join(",");
+    }).join("\r\n");
+
+    var blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
+    var url = URL.createObjectURL(blob);
+    var a = document.createElement("a");
+    var dateStr = new Date().toISOString().slice(0,10);
+    a.href = url;
+    a.download = "supply-audit-log-" + dateStr + ".csv";
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  }
+  function csvField(val){
+    var s = (val === undefined || val === null) ? "" : String(val);
+    if(/[",\n]/.test(s)){ s = '"' + s.replace(/"/g, '""') + '"'; }
+    return s;
+  }
+
+  function clearLog(){
+    if(entries.length === 0) return;
+    if(window.confirm("Clear all " + entries.length + " logged items? Export to CSV first if you haven't already.")){
+      entries = [];
+      saveEntries(entries);
+      renderTable();
+    }
+  }
+
+  function escapeHtml(s){
+    return String(s == null ? "" : s).replace(/[&<>"']/g, function(c){
+      return { "&":"&amp;", "<":"&lt;", ">":"&gt;", '"':"&quot;", "'":"&#39;" }[c];
+    });
+  }
+
+  // ---------- wire up ----------
+  lookupBtn.addEventListener("click", doLookup);
+  refInput.addEventListener("keydown", function(e){
+    if(e.key === "Enter"){ e.preventDefault(); doLookup(); }
+  });
+  logBtn.addEventListener("click", logItem);
+  exportBtn.addEventListener("click", exportCSV);
+  clearBtn.addEventListener("click", clearLog);
+
+})();
+</script>
+
+</body>
+</html>
