@@ -272,6 +272,44 @@
     color:var(--ink-soft);
     text-align:center;
   }
+
+  /* --- Mobile Responsiveness --- */
+  @media (max-width: 480px) {
+    /* Stack the scan input and button */
+    .scan-row {
+      flex-direction: column;
+    }
+    #lookupBtn {
+      padding: 14px 20px; /* Restores button height when stacked */
+      width: 100%;
+    }
+
+    /* Force the form into a single column */
+    .field-grid {
+      grid-template-columns: 1fr;
+    }
+
+    /* Stack the action buttons (Log / Cancel) */
+    .actions {
+      flex-direction: column;
+    }
+
+    /* Stack the export buttons */
+    .export-bar {
+      flex-direction: column;
+    }
+    .export-bar .btn-danger {
+      width: 100%;
+    }
+
+    /* Enable smooth horizontal scrolling for the table container */
+    .table-responsive {
+      overflow-x: auto;
+      -webkit-overflow-scrolling: touch;
+      margin: 0 -16px; /* Allows the table to scroll edge-to-edge on the phone */
+      padding: 0 16px;
+    }
+  }
 </style>
 </head>
 <body>
@@ -345,21 +383,23 @@
       <h2>Today's log</h2>
       <span class="count" id="entryCount">0 items</span>
     </div>
-    <table>
-      <thead>
-        <tr>
-          <th>Item</th>
-          <th>Ref #</th>
-          <th>Location</th>
-          <th>Exp</th>
-          <th>Qty</th>
-          <th></th>
-        </tr>
-      </thead>
-      <tbody id="logTableBody">
-        <tr class="empty-row"><td colspan="6">No items logged yet — scan a reference number above to get started.</td></tr>
-      </tbody>
-    </table>
+    <div class="table-responsive">
+      <table>
+        <thead>
+          <tr>
+            <th>Item</th>
+            <th>Ref #</th>
+            <th>Location</th>
+            <th>Exp</th>
+            <th>Qty</th>
+            <th></th>
+          </tr>
+        </thead>
+        <tbody id="logTableBody">
+          <tr class="empty-row"><td colspan="6">No items logged yet — scan a reference number above to get started.</td></tr>
+        </tbody>
+      </table>
+    </div>
 
     <div class="export-bar">
       <button class="btn btn-secondary" id="exportBtn">Export CSV</button>
