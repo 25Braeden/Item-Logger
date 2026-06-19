@@ -75,16 +75,17 @@
   #refInput{
     flex:1;
     font-family:var(--font-mono);
-    font-size:24px;
-    letter-spacing:0.04em;
+    font-size:22px;
+    letter-spacing:0.03em;
     padding:14px 14px;
     border:2px solid var(--line);
     border-radius:8px;
     background:#0F2530;
     color:#7FE3D2;
+    text-transform:uppercase;
     transition:border-color 0.15s ease, box-shadow 0.15s ease;
   }
-  #refInput::placeholder{ color:#4F7079; }
+  #refInput::placeholder{ color:#4F7079; text-transform:none; }
   #refInput:focus{
     outline:none;
     border-color:var(--found);
@@ -102,10 +103,30 @@
   }
   #lookupBtn:active{ transform:translateY(1px); }
   #lookupBtn:disabled{ opacity:0.6; cursor:default; }
+  .id-type-row{
+    display:flex;
+    gap:6px;
+    margin-top:10px;
+    flex-wrap:wrap;
+  }
+  .id-chip{
+    font-size:11px;
+    padding:4px 9px;
+    border-radius:999px;
+    border:1px solid var(--line);
+    background:#fff;
+    color:var(--ink-soft);
+    cursor:pointer;
+  }
+  .id-chip.active{
+    background:var(--brand);
+    color:#fff;
+    border-color:var(--brand);
+  }
   .hint{
     font-size:12px;
     color:var(--ink-soft);
-    margin-top:8px;
+    margin-top:10px;
   }
   .status{
     margin-top:12px;
@@ -163,6 +184,7 @@
     cursor:pointer;
   }
   .candidate-btn:hover{ border-color:var(--found); }
+  .candidate-btn .c-sub{ color:var(--ink-soft); font-size:11.5px; }
 
   .field-grid{
     display:grid;
@@ -275,59 +297,44 @@
 
   /* --- Mobile Responsiveness --- */
   @media (max-width: 480px) {
-    /* Stack the scan input and button */
-    .scan-row {
-      flex-direction: column;
-    }
-    #lookupBtn {
-      padding: 14px 20px; /* Restores button height when stacked */
-      width: 100%;
-    }
-
-    /* Force the form into a single column */
-    .field-grid {
-      grid-template-columns: 1fr;
-    }
-
-    /* Stack the action buttons (Log / Cancel) */
-    .actions {
-      flex-direction: column;
-    }
-
-    /* Stack the export buttons */
-    .export-bar {
-      flex-direction: column;
-    }
-    .export-bar .btn-danger {
-      width: 100%;
-    }
-
-    /* Enable smooth horizontal scrolling for the table container */
+    .scan-row { flex-direction: column; }
+    #lookupBtn { padding: 14px 20px; width: 100%; }
+    .field-grid { grid-template-columns: 1fr; }
+    .actions { flex-direction: column; }
+    .export-bar { flex-direction: column; }
+    .export-bar .btn-danger { width: 100%; }
     .table-responsive {
       overflow-x: auto;
       -webkit-overflow-scrolling: touch;
-      margin: 0 -16px; /* Allows the table to scroll edge-to-edge on the phone */
+      margin: 0 -16px;
       padding: 0 16px;
     }
   }
 </style>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/exceljs/4.4.0/exceljs.min.js"></script>
 </head>
 <body>
 
 <header>
   <h1>Supply Audit Log</h1>
-  <p>Mercy Medical Center · Quality Dept · Expired/non-conforming supply checks</p>
+  <p>Mercy Medical Center &middot; Quality Dept &middot; Expired/non-conforming supply checks</p>
 </header>
 
 <main>
 
   <div class="card scan-zone">
-    <label for="refInput">Reference / catalog number</label>
+    <label for="refInput">Reference, GTIN/barcode, or NDC</label>
     <div class="scan-row">
-      <input id="refInput" type="text" inputmode="numeric" autocomplete="off" placeholder="e.g. 367988" autofocus>
+      <input id="refInput" type="text" autocomplete="off" autocapitalize="characters" spellcheck="false" placeholder="e.g. 367988, MSC092208, or 10304094887101" autofocus>
       <button id="lookupBtn">Look up</button>
     </div>
-    <div class="hint">Looks this up in the FDA's public device database (GUDID). Press Enter or tap Look up.</div>
+    <div class="id-type-row" id="idTypeRow">
+      <span class="id-chip active" data-mode="auto">Auto-detect</span>
+      <span class="id-chip" data-mode="ref">REF / catalog</span>
+      <span class="id-chip" data-mode="gtin">GTIN / barcode</span>
+      <span class="id-chip" data-mode="ndc">NDC (drug)</span>
+    </div>
+    <div class="hint" id="hintText">Type the REF, the long barcode/GTIN number, or a drug NDC (with or without dashes — e.g. 0409-4887-10 or 00409488710). Letters are fine (e.g. MSC092208). Press Enter or tap Look up.</div>
     <div id="statusBox" class="status"></div>
   </div>
 
@@ -340,9 +347,14 @@
         <input id="manualName" type="text" placeholder="Enter item name">
       </div>
       <div class="field">
-        <label for="locationInput">Location found</label>
-        <input id="locationInput" list="locationSuggestions" placeholder="e.g. 3rd Floor Supply Rm">
-        <datalist id="locationSuggestions"></datalist>
+        <label for="floorInput">Floor #</label>
+        <input id="floorInput" list="floorSuggestions" placeholder="e.g. 3">
+        <datalist id="floorSuggestions"></datalist>
+      </div>
+      <div class="field">
+        <label for="roomInput">Room</label>
+        <input id="roomInput" list="roomSuggestions" placeholder="e.g. Supply Rm A">
+        <datalist id="roomSuggestions"></datalist>
       </div>
       <div class="field">
         <label for="expInput">Expiration date</label>
@@ -388,7 +400,7 @@
         <thead>
           <tr>
             <th>Item</th>
-            <th>Ref #</th>
+            <th>ID #</th>
             <th>Location</th>
             <th>Exp</th>
             <th>Qty</th>
@@ -396,13 +408,13 @@
           </tr>
         </thead>
         <tbody id="logTableBody">
-          <tr class="empty-row"><td colspan="6">No items logged yet — scan a reference number above to get started.</td></tr>
+          <tr class="empty-row"><td colspan="6">No items logged yet — enter an ID above to get started.</td></tr>
         </tbody>
       </table>
     </div>
 
     <div class="export-bar">
-      <button class="btn btn-secondary" id="exportBtn">Export CSV</button>
+      <button class="btn btn-secondary" id="exportBtn">Export Excel</button>
       <button class="btn btn-danger" id="clearBtn">Clear log</button>
     </div>
   </div>
@@ -410,43 +422,28 @@
 </main>
 
 <footer>
-  Stored locally in this browser. Export to CSV regularly to keep a backup / share with your manager.
+  Stored locally in this browser. Export to Excel regularly to keep a backup / share with your manager.
 </footer>
 
 <script>
 (function(){
   "use strict";
 
-  // ---------- storage (plain browser localStorage — this is a standalone file meant to run
-  // in a normal browser tab on your laptop, not inside Claude's chat, so we use localStorage
-  // rather than any chat-only storage API. Falls back to in-memory if storage is blocked.) ----------
   var STORE_KEY = "supplyAuditLog.entries";
   var SETTINGS_KEY = "supplyAuditLog.settings";
   var memoryFallback = { entries: [], settings: {} };
-  var storageBlocked = false;
 
   function loadEntries(){
-    try{
-      var raw = window.localStorage.getItem(STORE_KEY);
-      return raw ? JSON.parse(raw) : [];
-    }catch(e){
-      storageBlocked = true;
-      return memoryFallback.entries;
-    }
+    try{ var raw = window.localStorage.getItem(STORE_KEY); return raw ? JSON.parse(raw) : []; }
+    catch(e){ return memoryFallback.entries; }
   }
   function saveEntries(list){
-    try{
-      window.localStorage.setItem(STORE_KEY, JSON.stringify(list));
-    }catch(e){
-      storageBlocked = true;
-      memoryFallback.entries = list;
-    }
+    try{ window.localStorage.setItem(STORE_KEY, JSON.stringify(list)); }
+    catch(e){ memoryFallback.entries = list; }
   }
   function loadSettings(){
-    try{
-      var raw = window.localStorage.getItem(SETTINGS_KEY);
-      return raw ? JSON.parse(raw) : {};
-    }catch(e){ return memoryFallback.settings; }
+    try{ var raw = window.localStorage.getItem(SETTINGS_KEY); return raw ? JSON.parse(raw) : {}; }
+    catch(e){ return memoryFallback.settings; }
   }
   function saveSettings(s){
     try{ window.localStorage.setItem(SETTINGS_KEY, JSON.stringify(s)); }
@@ -455,91 +452,308 @@
 
   var entries = loadEntries();
   var settings = loadSettings();
-  var currentMatch = null; // populated after a successful lookup
+  var currentMatch = null;
+  var idMode = "auto";
 
-  // ---------- elements ----------
   var refInput = document.getElementById("refInput");
   var lookupBtn = document.getElementById("lookupBtn");
+  var idTypeRow = document.getElementById("idTypeRow");
+  var hintText = document.getElementById("hintText");
   var statusBox = document.getElementById("statusBox");
   var resultArea = document.getElementById("resultArea");
   var matchSlot = document.getElementById("matchSlot");
   var manualNameField = document.getElementById("manualNameField");
   var manualName = document.getElementById("manualName");
-  var locationInput = document.getElementById("locationInput");
-  var locationSuggestions = document.getElementById("locationSuggestions");
+  var floorInput = document.getElementById("floorInput");
+  var floorSuggestions = document.getElementById("floorSuggestions");
+  var roomInput = document.getElementById("roomInput");
+  var roomSuggestions = document.getElementById("roomSuggestions");
   var expInput = document.getElementById("expInput");
   var qtyInput = document.getElementById("qtyInput");
   var reasonInput = document.getElementById("reasonInput");
   var loggedByInput = document.getElementById("loggedByInput");
   var notesInput = document.getElementById("notesInput");
   var logBtn = document.getElementById("logBtn");
-  var cancelBtn = document.getElementById("cancelBtn");
   var logTableBody = document.getElementById("logTableBody");
   var entryCount = document.getElementById("entryCount");
   var exportBtn = document.getElementById("exportBtn");
   var clearBtn = document.getElementById("clearBtn");
 
-  // prefill remembered values
   if(settings.loggedBy) loggedByInput.value = settings.loggedBy;
   refreshLocationSuggestions();
   renderTable();
 
-  // ---------- status helper ----------
+  // ---------- id type chips ----------
+  Array.prototype.forEach.call(idTypeRow.querySelectorAll(".id-chip"), function(chip){
+    chip.addEventListener("click", function(){
+      idMode = chip.getAttribute("data-mode");
+      Array.prototype.forEach.call(idTypeRow.querySelectorAll(".id-chip"), function(c){ c.classList.remove("active"); });
+      chip.classList.add("active");
+    });
+  });
+
   function setStatus(msg, kind){
     statusBox.textContent = msg;
     statusBox.className = "status show" + (kind ? " " + kind : "");
   }
-  function clearStatus(){
-    statusBox.className = "status";
-    statusBox.textContent = "";
+  function clearStatus(){ statusBox.className = "status"; statusBox.textContent = ""; }
+
+  // ---------- identifier helpers ----------
+  // Strip common GS1 barcode wrappers: a scanned/printed barcode often reads like
+  // (01)00817903010049(17)250801(10)C00243 — the (01) segment is the GTIN.
+  function extractGtinFromBarcode(raw){
+    var s = raw.replace(/\s+/g, "");
+    var m = s.match(/\(01\)(\d{14})/);
+    if(m) return m[1];
+    // sometimes pasted without parentheses, starting 01 + 14 digits
+    m = s.match(/^01(\d{14})/);
+    if(m) return m[1];
+    return null;
+  }
+  function digitsOnly(s){ return s.replace(/[^0-9]/g, ""); }
+
+  // Given a raw NDC (dashed or not, 10 or 11 digits), produce candidate dashed
+  // *product* NDCs (labeler-product, no package segment) to try against openFDA,
+  // which stores product_ndc in dashed 10-digit form. We can't be 100% sure where
+  // padding zeros sit, so we generate the plausible splits and try each.
+  function ndcProductCandidates(raw){
+    var s = raw.trim();
+    var cands = [];
+
+    if(s.indexOf("-") !== -1){
+      var segs = s.split("-");
+      if(segs.length >= 2){
+        cands.push(segs[0] + "-" + segs[1]);
+        // also a zero-stripped labeler variant in case of 5- vs 4-digit
+        if(segs[0].length === 5 && segs[0][0] === "0"){
+          cands.push(segs[0].slice(1) + "-" + segs[1]);
+        }
+      }
+      return cands;
+    }
+
+    var d = digitsOnly(s);
+    if(d.length === 11){
+      // 11-digit billing form is 5-4-2. Product portion = first 9 digits as 5-4.
+      var labeler5 = d.slice(0,5), product4 = d.slice(5,9);
+      cands.push(labeler5 + "-" + product4);                 // 5-4 (e.g. 00409-4887)
+      // if labeler had a leading pad zero, real labeler may be 4 digits -> 4-4
+      if(labeler5[0] === "0") cands.push(labeler5.slice(1) + "-" + product4); // 0409-4887
+      // 5-3 variant (if product had a pad zero)
+      if(product4[0] === "0") cands.push(labeler5 + "-" + product4.slice(1));
+    }else if(d.length === 10){
+      // 10-digit could be 4-4-2, 5-3-2, or 5-4-1. Product = first 8 digits.
+      cands.push(d.slice(0,4) + "-" + d.slice(4,8)); // 4-4
+      cands.push(d.slice(0,5) + "-" + d.slice(5,8)); // 5-3
+      cands.push(d.slice(0,5) + "-" + d.slice(5,9)); // 5-4 (5-4-1 case)
+    }
+    // de-dupe
+    return cands.filter(function(v,i){ return cands.indexOf(v) === i; });
+  }
+
+  // Is this plausibly an NDC entered without dashes? 10 or 11 pure digits that
+  // we haven't already claimed as a GTIN (12/14 digits).
+  function looksLikeBareNDC(d){ return d.length === 10 || d.length === 11; }
+
+  function detectMode(raw){
+    var s = raw.trim();
+    if(extractGtinFromBarcode(s)) return "gtin";
+    var d = digitsOnly(s);
+    // NDC with dashes, e.g. 0409-4887-10
+    if(/^\d{4,5}-\d{3,4}-\d{1,2}$/.test(s)) return "ndc";
+    // GTIN: 12 or 14 pure digits
+    if(/^\d{12}$/.test(d) || /^\d{14}$/.test(d)) return "gtin";
+    // 11-digit bare number is most likely a billing-format NDC (5-4-2)
+    if(/^\d{11}$/.test(d)) return "ndc";
+    // contains letters -> catalog ref
+    if(/[A-Za-z]/.test(s)) return "ref";
+    // short numeric -> catalog ref (e.g. 367988, 415303)
+    return "ref";
   }
 
   // ---------- lookup ----------
   function doLookup(){
-    var ref = refInput.value.trim();
-    if(!ref){ refInput.focus(); return; }
+    var raw = refInput.value.trim();
+    if(!raw){ refInput.focus(); return; }
     currentMatch = null;
     lookupBtn.disabled = true;
-    setStatus("Searching FDA device database…", "searching");
     resultArea.classList.remove("show");
 
-    var url = "https://api.fda.gov/device/udi.json?search="
-      + encodeURIComponent('catalog_number:"' + ref + '"') + "&limit=5";
+    var mode = (idMode === "auto") ? detectMode(raw) : idMode;
+    var modeLabel = { ref:"catalog/REF", gtin:"GTIN/barcode", ndc:"NDC" }[mode] || mode;
+    setStatus("Searching as " + modeLabel + "…", "searching");
 
-    fetch(url).then(function(res){
-      if(!res.ok){ throw new Error("status " + res.status); }
-      return res.json();
-    }).then(function(data){
+    var p;
+    if(mode === "ndc"){
+      p = lookupNDC(raw);
+    }else if(mode === "gtin"){
+      p = lookupGTIN(raw);
+    }else{
+      p = lookupCatalog(raw);
+    }
+
+    p.then(function(handled){
       lookupBtn.disabled = false;
-      var results = (data && data.results) ? data.results : [];
-      if(results.length === 0){
+      if(handled === "empty"){
         clearStatus();
-        setStatus("No match found for that reference number in the FDA device database. Enter the item details manually below.", "warn");
-        openManualEntry(ref);
-        return;
+        setStatus("No match found in the FDA database for that " + modeLabel + ". It may not be registered (older stock, exempt item, or a manufacturer gap). Enter the details manually below.", "warn");
+        openManualEntry(raw);
       }
-      clearStatus();
-      if(results.length === 1){
-        selectMatch(results[0], ref);
-      }else{
-        showCandidates(results, ref);
-      }
-    }).catch(function(err){
+    }).catch(function(){
       lookupBtn.disabled = false;
       clearStatus();
-      setStatus("Couldn't reach the lookup database (offline, or it's temporarily unavailable). Enter the item details manually below.", "err");
-      openManualEntry(ref);
+      setStatus("Couldn't reach the lookup database (offline, or temporarily unavailable). Enter the item details manually below.", "err");
+      openManualEntry(raw);
     });
   }
 
-  function showCandidates(results, ref){
-    var html = '<div class="match-card"><div class="label">Multiple matches — pick one</div>' +
-      '<div class="candidates">';
-    results.forEach(function(r, i){
-      var name = r.brand_name || r.device_description || "Unnamed device";
-      var company = r.company_name || "Unknown manufacturer";
+  function fdaFetch(url){
+    return fetch(url).then(function(res){
+      if(res.status === 404) return { results: [] }; // openFDA returns 404 for no matches
+      if(!res.ok) throw new Error("status " + res.status);
+      return res.json();
+    });
+  }
+
+  // Device catalog number lookup.
+  // Tries an exact catalog match first. Only if the REF is long/alphanumeric enough to
+  // make a substring match meaningful does it fall back to a wildcard search — and those
+  // results are flagged "approximate" so they're never shown as a confident match.
+  // Bare short numbers (e.g. 415303) are NOT wildcarded: the digits show up inside
+  // unrelated catalog numbers and produce false matches.
+  function lookupCatalog(raw){
+    var exactUrl = "https://api.fda.gov/device/udi.json?search="
+      + encodeURIComponent('catalog_number:"' + raw + '"') + "&limit=10";
+    return fdaFetch(exactUrl).then(function(data){
+      var results = (data && data.results) ? data.results : [];
+      if(results.length > 0){ handleDeviceResults(results, raw, false); return "ok"; }
+
+      // Decide whether a partial search is safe: require length >= 7, or presence of
+      // letters (alphanumeric catalog codes are specific enough to substring-match).
+      var token = raw.replace(/"/g, "").trim();
+      var hasLetters = /[A-Za-z]/.test(token);
+      var safeForWildcard = hasLetters || token.length >= 7;
+      if(!safeForWildcard) return "empty";
+
+      var partialUrl = "https://api.fda.gov/device/udi.json?search="
+        + encodeURIComponent('catalog_number:*' + token + '*') + "&limit=10";
+      return fdaFetch(partialUrl).then(function(d2){
+        var r2 = (d2 && d2.results) ? d2.results : [];
+        if(r2.length === 0) return "empty";
+        handleDeviceResults(r2, raw, true); // approximate
+        return "ok";
+      }).catch(function(){ return "empty"; });
+    });
+  }
+
+  // GTIN / barcode lookup — searches the identifiers array (DI/GTIN values live there)
+  function lookupGTIN(raw){
+    var gtin = extractGtinFromBarcode(raw) || digitsOnly(raw);
+    var url = "https://api.fda.gov/device/udi.json?search="
+      + encodeURIComponent('identifiers.id:"' + gtin + '"') + "&limit=10";
+    return fdaFetch(url).then(function(data){
+      var results = (data && data.results) ? data.results : [];
+      if(results.length === 0){
+        // fall back to trying it as a catalog number, just in case
+        return lookupCatalog(raw);
+      }
+      handleDeviceResults(results, gtin, false);
+      return "ok";
+    });
+  }
+
+  // NDC drug lookup. Handles dashed (0409-4887-10) and bare (00409488710) forms.
+  // openFDA's product_ndc is the dashed labeler-product (e.g. 0409-4887). We generate
+  // candidate splits, try each, and fall back to a package-level match on the full code.
+  function lookupNDC(raw){
+    var ndc = raw.trim();
+    var candidates = ndcProductCandidates(ndc);
+
+    function tryNext(i){
+      if(i >= candidates.length){
+        // package-level fallback using the full code (dashed forms only work here)
+        if(ndc.indexOf("-") !== -1){
+          var url2 = "https://api.fda.gov/drug/ndc.json?search="
+            + encodeURIComponent('packaging.package_ndc:"' + ndc + '"') + "&limit=5";
+          return fdaFetch(url2).then(function(d2){
+            var r2 = (d2 && d2.results) ? d2.results : [];
+            if(r2.length === 0) return "empty";
+            handleDrugResults(r2, ndc);
+            return "ok";
+          });
+        }
+        return Promise.resolve("empty");
+      }
+      var productNdc = candidates[i];
+      var url = "https://api.fda.gov/drug/ndc.json?search="
+        + encodeURIComponent('product_ndc:"' + productNdc + '"') + "&limit=5";
+      return fdaFetch(url).then(function(data){
+        var results = (data && data.results) ? data.results : [];
+        if(results.length > 0){ handleDrugResults(results, productNdc); return "ok"; }
+        return tryNext(i + 1);
+      });
+    }
+    return tryNext(0);
+  }
+
+  function deviceName(r){ return r.brand_name || r.device_description || "Unnamed device"; }
+  function deviceCompany(r){ return r.company_name || "Unknown manufacturer"; }
+  function deviceCatalog(r, fallback){ return r.catalog_number || r.version_or_model_number || fallback; }
+  // Combine terse brand_name with device_description for a meaningful label.
+  function deviceDisplayName(r){
+    var brand = deviceName(r);
+    var desc = r.device_description || "";
+    if(desc && brand.toLowerCase() === "unnamed device") return desc;
+    if(desc && desc.toLowerCase().indexOf(brand.toLowerCase()) === -1
+            && brand.toLowerCase().indexOf(desc.toLowerCase()) === -1){
+      return brand + " — " + desc;
+    }
+    return brand;
+  }
+
+  function handleDeviceResults(results, idEntered, approximate){
+    clearStatus();
+    if(approximate){
+      // Never present a wildcard/substring hit as a confident single match.
+      showCandidates(results.map(function(r){
+        return { name: deviceDisplayName(r), company: deviceCompany(r), raw: r, kind: "device",
+                 catalog: deviceCatalog(r, "") };
+      }), idEntered, true);
+      return;
+    }
+    if(results.length === 1){
+      selectDevice(results[0], idEntered);
+    }else{
+      showCandidates(results.map(function(r){
+        return { name: deviceDisplayName(r), company: deviceCompany(r), raw: r, kind: "device",
+                 catalog: deviceCatalog(r, "") };
+      }), idEntered, false);
+    }
+  }
+  function handleDrugResults(results, idEntered){
+    clearStatus();
+    if(results.length === 1){
+      selectDrug(results[0], idEntered);
+    }else{
+      showCandidates(results.map(function(r){
+        return { name: (r.brand_name || r.generic_name || "Unnamed drug"), company: (r.labeler_name || "Unknown labeler"), raw: r, kind: "drug" };
+      }), idEntered, false);
+    }
+  }
+
+  function showCandidates(cands, idEntered, approximate){
+    var headLabel = approximate ? "Possible matches (approximate) — verify before logging" : "Multiple matches — pick one";
+    var headColor = approximate ? "var(--flag)" : "var(--found)";
+    var cardStyle = approximate ? ' style="background:var(--flag-soft); border-color:#EFD2B4;"' : '';
+    var html = '<div class="match-card"' + cardStyle + '><div class="label" style="color:' + headColor + ';">' + headLabel + '</div>';
+    if(approximate){
+      html += '<div class="sub" style="margin:6px 0 2px;">No exact match for <b>' + escapeHtml(idEntered) + '</b>. These merely contain those characters in their catalog number — they may be unrelated. Pick one only if the name clearly fits, otherwise enter manually.</div>';
+    }
+    html += '<div class="candidates">';
+    cands.forEach(function(c, i){
+      var catLine = c.catalog ? ' <span class="c-sub">· REF ' + escapeHtml(c.catalog) + '</span>' : '';
       html += '<button type="button" class="candidate-btn" data-idx="' + i + '">' +
-        escapeHtml(name) + ' — ' + escapeHtml(company) + '</button>';
+        escapeHtml(c.name) + catLine + '<br><span class="c-sub">' + escapeHtml(c.company) + '</span></button>';
     });
     html += '</div><button type="button" class="btn-text" id="useManualLink" style="margin-top:8px;">None of these — enter manually</button></div>';
     matchSlot.innerHTML = html;
@@ -548,39 +762,52 @@
 
     Array.prototype.forEach.call(matchSlot.querySelectorAll(".candidate-btn"), function(btn){
       btn.addEventListener("click", function(){
-        selectMatch(results[parseInt(btn.getAttribute("data-idx"), 10)], ref);
+        var c = cands[parseInt(btn.getAttribute("data-idx"), 10)];
+        if(c.kind === "drug") selectDrug(c.raw, idEntered);
+        else selectDevice(c.raw, idEntered);
       });
     });
-    document.getElementById("useManualLink").addEventListener("click", function(){
-      openManualEntry(ref);
-    });
+    document.getElementById("useManualLink").addEventListener("click", function(){ openManualEntry(idEntered); });
     focusFormFirstField();
   }
 
-  function selectMatch(r, ref){
-    var name = r.brand_name || r.device_description || "Unnamed device";
-    var company = r.company_name || "Unknown manufacturer";
-    var catalog = r.catalog_number || r.version_or_model_number || ref;
-    currentMatch = { name: name, company: company, catalog: catalog, refEntered: ref };
+  function selectDevice(r, idEntered){
+    var company = deviceCompany(r);
+    var catalog = deviceCatalog(r, idEntered);
+    var display = deviceDisplayName(r);
+    currentMatch = { name: display, company: company, idNumber: catalog, idType: "Device REF", idEntered: idEntered };
+    var subLine = company + (r.gmdn_terms && r.gmdn_terms[0] && r.gmdn_terms[0].name ? " · " + r.gmdn_terms[0].name : "");
+    renderMatchCard("Device match found", display, subLine, "REF " + catalog);
+    focusFormFirstField();
+  }
+  function selectDrug(r, idEntered){
+    var name = r.brand_name || r.generic_name || "Unnamed drug";
+    var company = r.labeler_name || "Unknown labeler";
+    var ndc = r.product_ndc || idEntered;
+    var extra = [r.dosage_form, (r.active_ingredients && r.active_ingredients[0] ? r.active_ingredients[0].strength : "")].filter(Boolean).join(", ");
+    currentMatch = { name: name, company: company, idNumber: ndc, idType: "NDC", idEntered: idEntered };
+    renderMatchCard("Drug match found", name, company + (extra ? " · " + extra : ""), "NDC " + ndc);
+    focusFormFirstField();
+  }
 
+  function renderMatchCard(label, name, sub, idLine){
     matchSlot.innerHTML =
       '<div class="match-card">' +
-        '<div class="label">Match found</div>' +
+        '<div class="label">' + escapeHtml(label) + '</div>' +
         '<h3>' + escapeHtml(name) + '</h3>' +
-        '<div class="sub">' + escapeHtml(company) + '</div>' +
-        '<div class="ref">Catalog #' + escapeHtml(catalog) + '</div>' +
+        '<div class="sub">' + escapeHtml(sub) + '</div>' +
+        '<div class="ref">' + escapeHtml(idLine) + '</div>' +
       '</div>';
     manualNameField.style.display = "none";
     resultArea.classList.add("show");
-    focusFormFirstField();
   }
 
-  function openManualEntry(ref){
-    currentMatch = { name: "", company: "", catalog: ref, refEntered: ref, manual: true };
+  function openManualEntry(idEntered){
+    currentMatch = { name: "", company: "", idNumber: idEntered, idType: "Manual", idEntered: idEntered, manual: true };
     matchSlot.innerHTML =
       '<div class="match-card" style="background:var(--flag-soft); border-color:#EFD2B4;">' +
         '<div class="label" style="color:var(--flag);">Manual entry</div>' +
-        '<div class="ref">Ref # entered: ' + escapeHtml(ref) + '</div>' +
+        '<div class="ref">ID entered: ' + escapeHtml(idEntered) + '</div>' +
       '</div>';
     manualNameField.style.display = "block";
     manualName.value = "";
@@ -589,40 +816,35 @@
   }
 
   function focusFormFirstField(){
-    locationInput.value = settings.lastLocation || "";
+    floorInput.value = settings.lastFloor || "";
+    roomInput.value = settings.lastRoom || "";
     expInput.value = "";
     qtyInput.value = 1;
     reasonInput.value = "Expired";
     notesInput.value = "";
-    locationInput.focus();
+    floorInput.focus();
   }
 
-  // ---------- logging ----------
+  // ---------- logging (merge on ID + expiration) ----------
   function logItem(){
     if(!currentMatch){ return; }
     var name = currentMatch.manual ? manualName.value.trim() : currentMatch.name;
-    if(!name){
-      setStatus("Enter an item name before logging.", "warn");
-      manualName.focus();
-      return;
-    }
-    if(!locationInput.value.trim()){
-      setStatus("Enter where this item was found before logging.", "warn");
-      locationInput.focus();
-      return;
-    }
+    if(!name){ setStatus("Enter an item name before logging.", "warn"); manualName.focus(); return; }
+    if(!floorInput.value.trim() && !roomInput.value.trim()){ setStatus("Enter the floor and/or room where this item was found before logging.", "warn"); floorInput.focus(); return; }
 
-    var refNumber = currentMatch.catalog || currentMatch.refEntered || "";
+    var idNumber = currentMatch.idNumber || currentMatch.idEntered || "";
+    var idType = currentMatch.idType || "";
     var expiration = expInput.value || "";
     var qtyAdded = parseInt(qtyInput.value, 10) || 1;
-    var loc = locationInput.value.trim();
+    var floorVal = floorInput.value.trim();
+    var roomVal = roomInput.value.trim();
+    var locLabel = [floorVal ? "Floor " + floorVal : "", roomVal].filter(Boolean).join(" · ");
     var notesVal = notesInput.value.trim();
     var loggedByVal = loggedByInput.value.trim();
     var now = new Date().toISOString();
 
-    // Merge into an existing row if the ref number + expiration date already match one logged today.
     var existingIdx = entries.findIndex(function(e){
-      return e.refNumber === refNumber && e.expiration === expiration;
+      return e.idNumber === idNumber && e.expiration === expiration;
     });
 
     var mergedQty;
@@ -630,13 +852,12 @@
       var e = entries[existingIdx];
       e.quantity = (parseInt(e.quantity, 10) || 0) + qtyAdded;
       mergedQty = e.quantity;
-      if(loc && e.locations.indexOf(loc) === -1) e.locations.push(loc);
+      if(locLabel && e.locations.indexOf(locLabel) === -1) e.locations.push(locLabel);
       if(notesVal && e.notes.indexOf(notesVal) === -1) e.notes.push(notesVal);
       if(loggedByVal && e.loggedBy.indexOf(loggedByVal) === -1) e.loggedBy.push(loggedByVal);
       e.reason = reasonInput.value;
       e.lastLoggedAt = now;
       e.timesLogged = (e.timesLogged || 1) + 1;
-      // bring the merged row to the top so it's easy to spot
       entries.splice(existingIdx, 1);
       entries.unshift(e);
     }else{
@@ -644,11 +865,14 @@
         id: Date.now() + "-" + Math.random().toString(36).slice(2,7),
         itemName: name,
         company: currentMatch.company || "",
-        refNumber: refNumber,
+        idNumber: idNumber,
+        idType: idType,
         expiration: expiration,
         quantity: qtyAdded,
         reason: reasonInput.value,
-        locations: loc ? [loc] : [],
+        floor: floorVal,
+        room: roomVal,
+        locations: locLabel ? [locLabel] : [],
         notes: notesVal ? [notesVal] : [],
         loggedBy: loggedByVal ? [loggedByVal] : [],
         firstLoggedAt: now,
@@ -659,7 +883,8 @@
     saveEntries(entries);
 
     settings.loggedBy = loggedByVal;
-    settings.lastLocation = loc;
+    settings.lastFloor = floorVal;
+    settings.lastRoom = roomVal;
     saveSettings(settings);
     refreshLocationSuggestions();
 
@@ -679,19 +904,20 @@
 
   document.getElementById("cancelBtn").addEventListener("click", resetScan);
 
-  // ---------- table rendering ----------
+  // ---------- table ----------
   function renderTable(){
     entryCount.textContent = entries.length + (entries.length === 1 ? " item" : " items");
     if(entries.length === 0){
-      logTableBody.innerHTML = '<tr class="empty-row"><td colspan="6">No items logged yet — scan a reference number above to get started.</td></tr>';
+      logTableBody.innerHTML = '<tr class="empty-row"><td colspan="6">No items logged yet — enter an ID above to get started.</td></tr>';
       return;
     }
     var rows = entries.map(function(e){
-      var scanTag = e.timesLogged > 1 ? ' <span style="color:var(--ink-soft); font-weight:400; font-style:italic;">(merged ×' + e.timesLogged + ')</span>' : '';
+      var scanTag = e.timesLogged > 1 ? ' <span style="color:var(--ink-soft); font-weight:400; font-style:italic;">(merged &times;' + e.timesLogged + ')</span>' : '';
+      var typeTag = e.idType ? '<br><span style="color:var(--ink-soft); font-weight:400; font-size:10px;">' + escapeHtml(e.idType) + '</span>' : '';
       return '<tr>' +
         '<td class="item-name">' + escapeHtml(e.itemName) + scanTag + (e.company ? '<br><span style="color:var(--ink-soft); font-weight:400;">' + escapeHtml(e.company) + '</span>' : '') + '</td>' +
-        '<td class="ref-cell">' + escapeHtml(e.refNumber) + '</td>' +
-        '<td>' + escapeHtml(e.locations.join(', ')) + '</td>' +
+        '<td class="ref-cell">' + escapeHtml(e.idNumber) + typeTag + '</td>' +
+        '<td>' + escapeHtml((e.locations||[]).join(', ')) + '</td>' +
         '<td>' + escapeHtml(e.expiration) + '</td>' +
         '<td>' + escapeHtml(e.quantity) + '</td>' +
         '<td><button class="del-btn" data-id="' + e.id + '">Remove</button></td>' +
@@ -709,55 +935,89 @@
   }
 
   function refreshLocationSuggestions(){
-    var seen = {};
+    var floors = {}, rooms = {};
     entries.forEach(function(e){
-      (e.locations || []).forEach(function(loc){ if(loc) seen[loc] = true; });
+      if(e.floor) floors[e.floor] = true;
+      if(e.room) rooms[e.room] = true;
     });
-    locationSuggestions.innerHTML = Object.keys(seen).map(function(loc){
-      return '<option value="' + escapeHtml(loc) + '"></option>';
+    floorSuggestions.innerHTML = Object.keys(floors).map(function(v){
+      return '<option value="' + escapeHtml(v) + '"></option>';
+    }).join("");
+    roomSuggestions.innerHTML = Object.keys(rooms).map(function(v){
+      return '<option value="' + escapeHtml(v) + '"></option>';
     }).join("");
   }
 
   // ---------- export ----------
-  function exportCSV(){
-    if(entries.length === 0){
-      setStatus("Nothing to export yet.", "warn");
+  function exportXLSX(){
+    if(entries.length === 0){ setStatus("Nothing to export yet.", "warn"); return; }
+    if(typeof ExcelJS === "undefined"){
+      setStatus("The spreadsheet library didn't load (no internet when the page opened). Reconnect and reload the page, then export again.", "err");
       return;
     }
-    var headers = ["Date Logged","Item Name","Manufacturer","Reference #","Location Found","Expiration Date","Quantity","Reason","Notes","Logged By"];
-    var rows = entries.map(function(e){
-      return [
-        new Date(e.loggedAt).toLocaleString(),
-        e.itemName, e.company, e.refNumber, e.location, e.expiration, e.quantity, e.reason, e.notes, e.loggedBy
-      ];
-    });
-    var csv = [headers].concat(rows).map(function(row){
-      return row.map(csvField).join(",");
-    }).join("\r\n");
 
-    var blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
-    var url = URL.createObjectURL(blob);
-    var a = document.createElement("a");
-    var dateStr = new Date().toISOString().slice(0,10);
-    a.href = url;
-    a.download = "supply-audit-log-" + dateStr + ".csv";
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    URL.revokeObjectURL(url);
-  }
-  function csvField(val){
-    var s = (val === undefined || val === null) ? "" : String(val);
-    if(/[",\n]/.test(s)){ s = '"' + s.replace(/"/g, '""') + '"'; }
-    return s;
+    var wb = new ExcelJS.Workbook();
+    var ws = wb.addWorksheet("Supply Audit");
+    ws.columns = [
+      { header:"First Logged",    key:"first", width:20 },
+      { header:"Last Logged",     key:"last",  width:20 },
+      { header:"Item Name",       key:"name",  width:34 },
+      { header:"Manufacturer",    key:"mfr",   width:24 },
+      { header:"ID Number",       key:"id",    width:16 },
+      { header:"ID Type",         key:"type",  width:12 },
+      { header:"Floor",           key:"floor", width:8  },
+      { header:"Room",            key:"room",  width:16 },
+      { header:"Expiration Date", key:"exp",   width:14 },
+      { header:"Quantity",        key:"qty",   width:9  },
+      { header:"Reason",          key:"reason",width:18 },
+      { header:"Notes",           key:"notes", width:30 },
+      { header:"Logged By",       key:"by",    width:12 }
+    ];
+
+    entries.forEach(function(e){
+      ws.addRow({
+        first: e.firstLoggedAt ? new Date(e.firstLoggedAt).toLocaleString() : "",
+        last:  e.lastLoggedAt ? new Date(e.lastLoggedAt).toLocaleString() : "",
+        name:  e.itemName,
+        mfr:   e.company,
+        id:    e.idNumber,
+        type:  e.idType,
+        floor: e.floor || "",
+        room:  e.room || "",
+        exp:   e.expiration,
+        qty:   Number(e.quantity) || e.quantity,
+        reason: e.reason,
+        notes: (e.notes||[]).join(" | "),
+        by:    (e.loggedBy||[]).join(" | ")
+      });
+    });
+
+    // Header styling
+    ws.getRow(1).font = { bold:true };
+    ws.getRow(1).alignment = { vertical:"middle" };
+
+    // Wrap long-text columns so they flow downward within the cell instead of clipping.
+    ["name","mfr","room","reason","notes"].forEach(function(key){
+      ws.getColumn(key).alignment = { wrapText:true, vertical:"top" };
+    });
+
+    wb.xlsx.writeBuffer().then(function(buf){
+      var blob = new Blob([buf], { type:"application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" });
+      var url = URL.createObjectURL(blob);
+      var a = document.createElement("a");
+      a.href = url;
+      a.download = "supply-audit-log-" + new Date().toISOString().slice(0,10) + ".xlsx";
+      document.body.appendChild(a); a.click(); document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    }).catch(function(){
+      setStatus("Something went wrong building the Excel file. Try reloading the page.", "err");
+    });
   }
 
   function clearLog(){
     if(entries.length === 0) return;
-    if(window.confirm("Clear all " + entries.length + " logged items? Export to CSV first if you haven't already.")){
-      entries = [];
-      saveEntries(entries);
-      renderTable();
+    if(window.confirm("Clear all " + entries.length + " logged items? Export to Excel first if you havent already.")){
+      entries = []; saveEntries(entries); renderTable();
     }
   }
 
@@ -767,13 +1027,10 @@
     });
   }
 
-  // ---------- wire up ----------
   lookupBtn.addEventListener("click", doLookup);
-  refInput.addEventListener("keydown", function(e){
-    if(e.key === "Enter"){ e.preventDefault(); doLookup(); }
-  });
+  refInput.addEventListener("keydown", function(e){ if(e.key === "Enter"){ e.preventDefault(); doLookup(); } });
   logBtn.addEventListener("click", logItem);
-  exportBtn.addEventListener("click", exportCSV);
+  exportBtn.addEventListener("click", exportXLSX);
   clearBtn.addEventListener("click", clearLog);
 
 })();
