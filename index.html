@@ -359,6 +359,7 @@
       <div class="field">
         <label for="expInput">Expiration date</label>
         <input id="expInput" type="date">
+        <div id="expConfirm" style="font-size:11.5px;margin-top:4px;color:var(--ink-soft);"></div>
       </div>
       <div class="field">
         <label for="qtyInput">Quantity</label>
@@ -469,6 +470,7 @@
   var roomInput = document.getElementById("roomInput");
   var roomSuggestions = document.getElementById("roomSuggestions");
   var expInput = document.getElementById("expInput");
+  var expConfirm = document.getElementById("expConfirm");
   var qtyInput = document.getElementById("qtyInput");
   var reasonInput = document.getElementById("reasonInput");
   var loggedByInput = document.getElementById("loggedByInput");
@@ -815,6 +817,23 @@
     manualName.focus();
   }
 
+  // Mirror the value the form will ACTUALLY log. On iOS the native date
+  // picker can leave a value visible in the field that was never committed
+  // (e.g. you spin the wheels then tap away without pressing Done) — this
+  // line reads expInput.value, so it shows the truth, not the picker's
+  // transient display, letting the user catch a missing date before logging.
+  function updateExpConfirm(){
+    var v = expInput.value;
+    if(v){
+      var parts = v.split("-"); // yyyy-mm-dd
+      expConfirm.textContent = "Will log expiration: " + parts[1] + "/" + parts[2] + "/" + parts[0];
+      expConfirm.style.color = "var(--found)";
+    }else{
+      expConfirm.textContent = "No expiration date set yet.";
+      expConfirm.style.color = "var(--flag)";
+    }
+  }
+
   function focusFormFirstField(){
     floorInput.value = settings.lastFloor || "";
     roomInput.value = settings.lastRoom || "";
@@ -822,6 +841,7 @@
     qtyInput.value = 1;
     reasonInput.value = "Expired";
     notesInput.value = "";
+    updateExpConfirm();
     floorInput.focus();
   }
 
@@ -835,6 +855,18 @@
     var idNumber = currentMatch.idNumber || currentMatch.idEntered || "";
     var idType = currentMatch.idType || "";
     var expiration = expInput.value || "";
+
+    // Guard against the iOS empty-date trap: the field can look filled while
+    // expInput.value is actually empty (picker dismissed without "Done").
+    // Don't let an empty expiration log silently — make the user confirm it.
+    if(!expiration){
+      var r = reasonInput.value;
+      var needsDate = (r === "Expired" || r === "Near expiry");
+      var msg = needsDate
+        ? "No expiration date is set, but the reason is \"" + r + "\".\n\nOn iPhone the date can look filled even when it wasn't saved. Tap the date field, set it, and press Done.\n\nLog anyway with no expiration date?"
+        : "No expiration date is set for this item.\n\nLog it without an expiration date?";
+      if(!window.confirm(msg)){ expInput.focus(); updateExpConfirm(); return; }
+    }
     var qtyAdded = parseInt(qtyInput.value, 10) || 1;
     var floorVal = floorInput.value.trim();
     var roomVal = roomInput.value.trim();
@@ -1029,6 +1061,9 @@
 
   lookupBtn.addEventListener("click", doLookup);
   refInput.addEventListener("keydown", function(e){ if(e.key === "Enter"){ e.preventDefault(); doLookup(); } });
+  expInput.addEventListener("input", updateExpConfirm);
+  expInput.addEventListener("change", updateExpConfirm);
+  expInput.addEventListener("blur", updateExpConfirm);
   logBtn.addEventListener("click", logItem);
   exportBtn.addEventListener("click", exportXLSX);
   clearBtn.addEventListener("click", clearLog);
