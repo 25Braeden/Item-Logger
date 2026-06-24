@@ -335,6 +335,7 @@
       <span class="id-chip" data-mode="ndc">NDC (drug)</span>
     </div>
     <div class="hint" id="hintText">Type the REF, the long barcode/GTIN number, or a drug NDC (with or without dashes — e.g. 0409-4887-10 or 00409488710). Letters are fine (e.g. MSC092208). Press Enter or tap Look up.</div>
+    <button type="button" class="btn-text" id="manualEntryBtn" style="margin-top:10px;">No REF or barcode on the item? Add it manually</button>
     <div id="statusBox" class="status"></div>
   </div>
 
@@ -888,16 +889,21 @@
   }
 
   function openManualEntry(idEntered){
+    idEntered = (idEntered || "").trim();
     currentMatch = { name: "", company: "", idNumber: idEntered, idType: "Manual", idEntered: idEntered, manual: true };
+    var idLine = idEntered
+      ? 'ID entered: ' + escapeHtml(idEntered)
+      : 'No REF or barcode — identified by item name';
     matchSlot.innerHTML =
       '<div class="match-card" style="background:var(--flag-soft); border-color:#EFD2B4;">' +
         '<div class="label" style="color:var(--flag);">Manual entry</div>' +
-        '<div class="ref">ID entered: ' + escapeHtml(idEntered) + '</div>' +
+        '<div class="ref">' + idLine + '</div>' +
       '</div>';
     manualNameField.style.display = "block";
     manualName.value = "";
     resultArea.classList.add("show");
-    manualName.focus();
+    focusFormFirstField();   // reset floor/room/exp/qty so nothing carries over
+    manualName.focus();      // ...but land the cursor on the name, not the floor
   }
 
   // Mirror the value the form will ACTUALLY log. On iOS the native date
@@ -963,8 +969,15 @@
     // Initials are compared case-insensitively, so "BA" and "ba" are the same
     // logger (matches the sheet's norm() comparison).
     var byKey = loggedByVal.toLowerCase();
+    var nameKey = name.trim().toLowerCase();
     var existingIdx = entries.findIndex(function(e){
-      return e.idNumber === idNumber &&
+      // Items with a REF/barcode match on that ID. Manual items with no ID
+      // match on their name instead, so two different unlabeled items never
+      // merge together (and a no-ID item never folds into a REF'd one).
+      var sameItem = idNumber
+        ? (e.idNumber === idNumber)
+        : (!e.idNumber && (e.itemName || "").trim().toLowerCase() === nameKey);
+      return sameItem &&
              e.expiration === expiration &&
              ((((e.loggedBy && e.loggedBy[0]) || "").toLowerCase()) === byKey);
     });
@@ -1169,6 +1182,11 @@
 
   lookupBtn.addEventListener("click", doLookup);
   refInput.addEventListener("keydown", function(e){ if(e.key === "Enter"){ e.preventDefault(); doLookup(); } });
+  document.getElementById("manualEntryBtn").addEventListener("click", function(){
+    clearStatus();
+    refInput.value = "";
+    openManualEntry("");   // no REF/barcode — go straight to manual entry
+  });
   expInput.addEventListener("input", updateExpConfirm);
   expInput.addEventListener("change", updateExpConfirm);
   expInput.addEventListener("blur", updateExpConfirm);
