@@ -958,8 +958,12 @@
     var loggedByVal = loggedByInput.value.trim();
     var now = new Date().toISOString();
 
+    // Merge only when item ID, expiration AND initials all match — same rule
+    // as the shared sheet. Different expiration or different initials = new row.
     var existingIdx = entries.findIndex(function(e){
-      return e.idNumber === idNumber && e.expiration === expiration;
+      return e.idNumber === idNumber &&
+             e.expiration === expiration &&
+             (((e.loggedBy && e.loggedBy[0]) || "") === loggedByVal);
     });
 
     var mergedQty;
