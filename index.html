@@ -960,10 +960,13 @@
 
     // Merge only when item ID, expiration AND initials all match — same rule
     // as the shared sheet. Different expiration or different initials = new row.
+    // Initials are compared case-insensitively, so "BA" and "ba" are the same
+    // logger (matches the sheet's norm() comparison).
+    var byKey = loggedByVal.toLowerCase();
     var existingIdx = entries.findIndex(function(e){
       return e.idNumber === idNumber &&
              e.expiration === expiration &&
-             (((e.loggedBy && e.loggedBy[0]) || "") === loggedByVal);
+             ((((e.loggedBy && e.loggedBy[0]) || "").toLowerCase()) === byKey);
     });
 
     var mergedQty;
@@ -973,7 +976,7 @@
       mergedQty = e.quantity;
       if(locLabel && e.locations.indexOf(locLabel) === -1) e.locations.push(locLabel);
       if(notesVal && e.notes.indexOf(notesVal) === -1) e.notes.push(notesVal);
-      if(loggedByVal && e.loggedBy.indexOf(loggedByVal) === -1) e.loggedBy.push(loggedByVal);
+      if(loggedByVal && !e.loggedBy.some(function(x){ return x.toLowerCase() === byKey; })) e.loggedBy.push(loggedByVal);
       e.reason = reasonInput.value;
       e.lastLoggedAt = now;
       e.timesLogged = (e.timesLogged || 1) + 1;
