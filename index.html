@@ -418,12 +418,13 @@
       <button class="btn btn-secondary" id="exportBtn">Export Excel</button>
       <button class="btn btn-danger" id="clearBtn">Clear log</button>
     </div>
+    <div class="hint" id="syncStatus" style="margin-top:10px; cursor:pointer;"></div>
   </div>
 
 </main>
 
 <footer>
-  Stored locally in this browser. Export to Excel regularly to keep a backup / share with your manager.
+  Entries are saved on this device and synced to the shared floor sheets when online. Reports print from Google Sheets (one tab per floor).
 </footer>
 
 <script>
@@ -432,7 +433,16 @@
 
   var STORE_KEY = "supplyAuditLog.entries";
   var SETTINGS_KEY = "supplyAuditLog.settings";
+  var QUEUE_KEY = "supplyAuditLog.syncQueue";
   var memoryFallback = { entries: [], settings: {} };
+
+  // ---- Shared-sync config -------------------------------------------------
+  // Paste the Web app URL you get after deploying Code.gs (see setup guide)
+  // between the quotes below. While it's blank the app works exactly as before
+  // (entries stay only on this device). Once set, every logged item is also
+  // sent to the floor's tab in the shared Google Sheet.
+  var SYNC_URL = "https://script.google.com/macros/s/AKfycbyHKr1N-6T_hv72K15cFtdWnDPtrnzGpat1VYYAkJME0viQt9k94pgGJC8uYN7wIGHgbg/exec";
+  // -------------------------------------------------------------------------
 
   function loadEntries(){
     try{ var raw = window.localStorage.getItem(STORE_KEY); return raw ? JSON.parse(raw) : []; }
@@ -449,6 +459,78 @@
   function saveSettings(s){
     try{ window.localStorage.setItem(SETTINGS_KEY, JSON.stringify(s)); }
     catch(e){ memoryFallback.settings = s; }
+  }
+
+  // ---------- shared sync (Google Sheet) ----------
+  // Durable copy of every entry already lives in entries/localStorage. This
+  // queue only governs pushing to the shared Sheet, so nothing is lost if the
+  // network drops — unsent items wait here and retry automatically.
+  var syncQueueMem = [];
+  function loadQueue(){
+    try{ var raw = window.localStorage.getItem(QUEUE_KEY); return raw ? JSON.parse(raw) : []; }
+    catch(e){ return syncQueueMem; }
+  }
+  function saveQueue(q){
+    try{ window.localStorage.setItem(QUEUE_KEY, JSON.stringify(q)); }
+    catch(e){ syncQueueMem = q; }
+  }
+
+  function queueForSync(payload){
+    if(!SYNC_URL) return;            // sync not configured -> stay local-only
+    var q = loadQueue(); q.push(payload); saveQueue(q);
+    flushQueue();
+  }
+
+  var flushing = false;
+  function flushQueue(){
+    if(!SYNC_URL || flushing) return;
+    var q = loadQueue();
+    if(q.length === 0){ updateSyncStatus(); return; }
+    flushing = true;
+    updateSyncStatus("syncing");
+    var item = q[0];
+    // text/plain avoids a CORS preflight that Apps Script can't answer.
+    fetch(SYNC_URL, {
+      method: "POST",
+      headers: { "Content-Type": "text/plain;charset=utf-8" },
+      body: JSON.stringify(item)
+    })
+    .then(function(res){ return res.json().catch(function(){ return { ok: true }; }); })
+    .then(function(r){
+      flushing = false;
+      if(r && r.ok){
+        var q2 = loadQueue(); q2.shift(); saveQueue(q2);   // confirmed written
+        if(q2.length > 0) flushQueue(); else updateSyncStatus();
+      }else{
+        updateSyncStatus();   // server reported a problem; will retry later
+      }
+    })
+    .catch(function(){
+      // network/offline: keep the item queued. Server dedupes by syncId, so a
+      // later retry can never create a duplicate row.
+      flushing = false;
+      updateSyncStatus();
+    });
+  }
+
+  function updateSyncStatus(state){
+    if(!syncStatusEl) return;
+    if(!SYNC_URL){
+      syncStatusEl.textContent = "Shared sync is off — entries are only on this device. (Add your Sheet link in the code to turn it on.)";
+      syncStatusEl.style.color = "var(--ink-soft)";
+      return;
+    }
+    var pending = loadQueue().length;
+    if(state === "syncing"){
+      syncStatusEl.textContent = "Syncing to the shared sheet… (" + pending + " pending)";
+      syncStatusEl.style.color = "var(--brand)";
+    }else if(pending > 0){
+      syncStatusEl.textContent = pending + (pending === 1 ? " entry" : " entries") + " waiting to sync — tap to retry now.";
+      syncStatusEl.style.color = "var(--flag)";
+    }else{
+      syncStatusEl.textContent = "All entries synced to the shared sheet.";
+      syncStatusEl.style.color = "var(--found)";
+    }
   }
 
   var entries = loadEntries();
@@ -480,6 +562,7 @@
   var entryCount = document.getElementById("entryCount");
   var exportBtn = document.getElementById("exportBtn");
   var clearBtn = document.getElementById("clearBtn");
+  var syncStatusEl = document.getElementById("syncStatus");
 
   if(settings.loggedBy) loggedByInput.value = settings.loggedBy;
   refreshLocationSuggestions();
@@ -914,6 +997,24 @@
     }
     saveEntries(entries);
 
+    // Send this logging action to the shared sheet (one row per tap, filed
+    // under its floor). Unique syncId makes retries safe against duplicates.
+    queueForSync({
+      syncId: now + "-" + Math.random().toString(36).slice(2, 9),
+      timestamp: now,
+      itemName: name,
+      company: currentMatch.company || "",
+      idNumber: idNumber,
+      idType: idType,
+      floor: floorVal,
+      room: roomVal,
+      expiration: expiration,
+      quantity: qtyAdded,
+      reason: reasonInput.value,
+      notes: notesVal,
+      loggedBy: loggedByVal
+    });
+
     settings.loggedBy = loggedByVal;
     settings.lastFloor = floorVal;
     settings.lastRoom = roomVal;
@@ -1067,6 +1168,11 @@
   logBtn.addEventListener("click", logItem);
   exportBtn.addEventListener("click", exportXLSX);
   clearBtn.addEventListener("click", clearLog);
+  syncStatusEl.addEventListener("click", flushQueue);   // tap status to retry
+  window.addEventListener("online", flushQueue);         // auto-retry when back online
+
+  updateSyncStatus();
+  flushQueue();   // push anything left over from a previous offline session
 
 })();
 </script>
