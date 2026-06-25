@@ -348,9 +348,17 @@
         <input id="manualName" type="text" placeholder="Enter item name">
       </div>
       <div class="field">
+        <label for="buildingInput">Building</label>
+        <select id="buildingInput">
+          <option value="">Select…</option>
+          <option value="B">Bunting (B)</option>
+          <option value="W">Weinberg (W)</option>
+          <option value="A">McAuley (A)</option>
+        </select>
+      </div>
+      <div class="field">
         <label for="floorInput">Floor #</label>
-        <input id="floorInput" list="floorSuggestions" placeholder="e.g. 3">
-        <datalist id="floorSuggestions"></datalist>
+        <input id="floorInput" inputmode="numeric" placeholder="e.g. 9">
       </div>
       <div class="field">
         <label for="roomInput">Room</label>
@@ -549,7 +557,7 @@
   var manualNameField = document.getElementById("manualNameField");
   var manualName = document.getElementById("manualName");
   var floorInput = document.getElementById("floorInput");
-  var floorSuggestions = document.getElementById("floorSuggestions");
+  var buildingInput = document.getElementById("buildingInput");
   var roomInput = document.getElementById("roomInput");
   var roomSuggestions = document.getElementById("roomSuggestions");
   var expInput = document.getElementById("expInput");
@@ -924,6 +932,7 @@
   }
 
   function focusFormFirstField(){
+    buildingInput.value = settings.lastBuilding || "";
     floorInput.value = settings.lastFloor || "";
     roomInput.value = settings.lastRoom || "";
     expInput.value = "";
@@ -939,7 +948,10 @@
     if(!currentMatch){ return; }
     var name = currentMatch.manual ? manualName.value.trim() : currentMatch.name;
     if(!name){ setStatus("Enter an item name before logging.", "warn"); manualName.focus(); return; }
-    if(!floorInput.value.trim() && !roomInput.value.trim()){ setStatus("Enter the floor and/or room where this item was found before logging.", "warn"); floorInput.focus(); return; }
+    var buildingCode = buildingInput.value.trim().toUpperCase();
+    var floorNum = floorInput.value.trim();
+    if(floorNum && !buildingCode){ setStatus("Pick the building (Bunting, Weinberg, or McAuley) for this floor.", "warn"); buildingInput.focus(); return; }
+    if(!floorNum && !roomInput.value.trim()){ setStatus("Enter the building + floor and/or room where this item was found before logging.", "warn"); buildingInput.focus(); return; }
 
     var idNumber = currentMatch.idNumber || currentMatch.idEntered || "";
     var idType = currentMatch.idType || "";
@@ -957,7 +969,7 @@
       if(!window.confirm(msg)){ expInput.focus(); updateExpConfirm(); return; }
     }
     var qtyAdded = parseInt(qtyInput.value, 10) || 1;
-    var floorVal = floorInput.value.trim();
+    var floorVal = buildingCode + floorNum;   // canonical "B9", "W3", "A12"
     var roomVal = roomInput.value.trim();
     var locLabel = [floorVal ? "Floor " + floorVal : "", roomVal].filter(Boolean).join(" · ");
     var notesVal = notesInput.value.trim();
@@ -1036,7 +1048,8 @@
     });
 
     settings.loggedBy = loggedByVal;
-    settings.lastFloor = floorVal;
+    settings.lastBuilding = buildingCode;
+    settings.lastFloor = floorNum;
     settings.lastRoom = roomVal;
     saveSettings(settings);
     refreshLocationSuggestions();
@@ -1088,14 +1101,10 @@
   }
 
   function refreshLocationSuggestions(){
-    var floors = {}, rooms = {};
+    var rooms = {};
     entries.forEach(function(e){
-      if(e.floor) floors[e.floor] = true;
       if(e.room) rooms[e.room] = true;
     });
-    floorSuggestions.innerHTML = Object.keys(floors).map(function(v){
-      return '<option value="' + escapeHtml(v) + '"></option>';
-    }).join("");
     roomSuggestions.innerHTML = Object.keys(rooms).map(function(v){
       return '<option value="' + escapeHtml(v) + '"></option>';
     }).join("");
