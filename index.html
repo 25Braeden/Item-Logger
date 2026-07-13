@@ -333,6 +333,11 @@
   }
 </style>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/exceljs/4.4.0/exceljs.min.js"></script>
+<!-- BarcodeDetector polyfill (zxing-cpp WebAssembly): iPhone Safari has no built-in
+     barcode detector, so without this it falls back to a weak JS decoder that
+     struggles with the small DataMatrix squares on drug packages. Must load
+     before html5-qrcode picks a decoder. Chrome keeps its native detector. -->
+<script src="https://cdn.jsdelivr.net/npm/barcode-detector@3.0.5/dist/iife/polyfill.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/html5-qrcode/2.3.8/html5-qrcode.min.js"></script>
 </head>
 <body>
@@ -359,10 +364,14 @@
         <button type="button" class="id-chip" data-zoom="2">2&times;</button>
         <button type="button" class="id-chip" data-zoom="3">3&times;</button>
       </div>
-      <div style="display:flex; align-items:center; justify-content:space-between; margin-top:8px;">
-        <span class="hint" style="margin-top:0;">Center the code in the box. For the small square (DataMatrix) codes, tap 2&times; zoom and hold the phone a hand-width away.</span>
-        <button type="button" class="btn-text" id="closeScanBtn">Close camera</button>
+      <div style="display:flex; align-items:center; justify-content:space-between; gap:10px; margin-top:8px;">
+        <span class="hint" style="margin-top:0;">Center the code in the box. For small square (DataMatrix) codes, tap 2&times; zoom and hold the phone a hand-width away.</span>
+        <div style="display:flex; flex-direction:column; gap:8px; align-items:flex-end; flex:0 0 auto;">
+          <button type="button" class="btn-text" id="photoScanBtn">Scan from photo</button>
+          <button type="button" class="btn-text" id="closeScanBtn">Close camera</button>
+        </div>
       </div>
+      <input type="file" id="photoScanInput" accept="image/*" capture="environment" style="display:none;">
     </div>
     <div class="id-type-row" id="idTypeRow">
       <span class="id-chip active" data-mode="auto">Auto-detect</span>
@@ -1502,6 +1511,37 @@
       Array.prototype.forEach.call(zoomRow.querySelectorAll("button"), function(x){ x.classList.remove("active"); });
       b.classList.add("active");
     });
+  });
+
+  // Photo fallback for stubborn codes: the native camera app can tap-to-focus
+  // and shoots at full resolution, which reads codes the live video misses
+  // (crinkled wrappers, faint print, very small DataMatrix).
+  var photoScanBtn = document.getElementById("photoScanBtn");
+  var photoScanInput = document.getElementById("photoScanInput");
+  photoScanBtn.addEventListener("click", function(){ photoScanInput.click(); });
+  photoScanInput.addEventListener("change", function(){
+    var f = photoScanInput.files && photoScanInput.files[0];
+    photoScanInput.value = "";
+    if(!f || !scanner) return;
+    var decode = function(){
+      setStatus("Reading the photo…", "searching");
+      scanner.scanFileV2(f, false).then(function(r){
+        clearStatus();
+        if(navigator.vibrate) navigator.vibrate(80);
+        refInput.value = (r && r.decodedText) || "";
+        doLookup();
+      }).catch(function(){
+        setStatus("Couldn't read a barcode in that photo. Get close so the code fills the shot, tap the code to focus before snapping, and try again.", "err");
+      });
+    };
+    if(scannerRunning){
+      scannerRunning = false;
+      cameraBtn.disabled = false;
+      scannerBox.style.display = "none";
+      scanner.stop().then(decode).catch(decode);
+    }else{
+      decode();
+    }
   });
 
   cameraBtn.addEventListener("click", openScanner);
