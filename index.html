@@ -103,6 +103,27 @@
   }
   #lookupBtn:active{ transform:translateY(1px); }
   #lookupBtn:disabled{ opacity:0.6; cursor:default; }
+  #cameraBtn{
+    padding:0 14px;
+    border:none;
+    border-radius:8px;
+    background:var(--brand-soft);
+    color:var(--brand);
+    font-size:14px;
+    font-weight:600;
+    cursor:pointer;
+    white-space:nowrap;
+  }
+  #cameraBtn:active{ transform:translateY(1px); }
+  #cameraBtn:disabled{ opacity:0.6; cursor:default; }
+  #scannerBox{ margin-top:12px; }
+  #cameraView{
+    width:100%;
+    border-radius:8px;
+    overflow:hidden;
+    background:#0F2530;
+  }
+  #cameraView video{ width:100% !important; border-radius:8px; }
   .id-type-row{
     display:flex;
     gap:6px;
@@ -298,7 +319,7 @@
   /* --- Mobile Responsiveness --- */
   @media (max-width: 480px) {
     .scan-row { flex-direction: column; }
-    #lookupBtn { padding: 14px 20px; width: 100%; }
+    #lookupBtn, #cameraBtn { padding: 14px 20px; width: 100%; }
     .field-grid { grid-template-columns: 1fr; }
     .actions { flex-direction: column; }
     .export-bar { flex-direction: column; }
@@ -312,12 +333,13 @@
   }
 </style>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/exceljs/4.4.0/exceljs.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/html5-qrcode/2.3.8/html5-qrcode.min.js"></script>
 </head>
 <body>
 
 <header>
   <h1>Supply Audit Log</h1>
-  <p>Mercy Medical Center &middot; Quality Dept &middot; Expired/non-conforming supply checks</p>
+  <p>Mercy Medical Center &middot; Quality Dept &middot; Expired/non-conforming supply &amp; pharmacy checks</p>
 </header>
 
 <main>
@@ -325,17 +347,31 @@
   <div class="card scan-zone">
     <label for="refInput">Reference, GTIN/barcode, or NDC</label>
     <div class="scan-row">
-      <input id="refInput" type="text" autocomplete="off" autocapitalize="characters" spellcheck="false" placeholder="e.g. 367988, MSC092208, or 10304094887101" autofocus>
+      <input id="refInput" type="text" autocomplete="off" autocapitalize="characters" spellcheck="false" placeholder="e.g. 367988, 0904-7252-61, or venlafaxine 50" autofocus>
+      <button id="cameraBtn" title="Scan a barcode with the camera">&#128247; Scan</button>
       <button id="lookupBtn">Look up</button>
+    </div>
+    <div id="scannerBox" style="display:none;">
+      <div id="cameraView"></div>
+      <div id="zoomRow" style="display:none; align-items:center; gap:6px; margin-top:8px;">
+        <span class="hint" style="margin-top:0;">Zoom (for small square codes):</span>
+        <button type="button" class="id-chip active" data-zoom="1">1&times;</button>
+        <button type="button" class="id-chip" data-zoom="2">2&times;</button>
+        <button type="button" class="id-chip" data-zoom="3">3&times;</button>
+      </div>
+      <div style="display:flex; align-items:center; justify-content:space-between; margin-top:8px;">
+        <span class="hint" style="margin-top:0;">Center the code in the box. For the small square (DataMatrix) codes, tap 2&times; zoom and hold the phone a hand-width away.</span>
+        <button type="button" class="btn-text" id="closeScanBtn">Close camera</button>
+      </div>
     </div>
     <div class="id-type-row" id="idTypeRow">
       <span class="id-chip active" data-mode="auto">Auto-detect</span>
       <span class="id-chip" data-mode="ref">REF / catalog</span>
       <span class="id-chip" data-mode="gtin">GTIN / barcode</span>
       <span class="id-chip" data-mode="ndc">NDC (drug)</span>
+      <span class="id-chip" data-mode="name">Drug name</span>
     </div>
-    <div class="hint" id="hintText">Type the REF, the long barcode/GTIN number, or a drug NDC (with or without dashes — e.g. 0409-4887-10 or 00409488710). Letters are fine (e.g. MSC092208). Press Enter or tap Look up.</div>
-    <button type="button" class="btn-text" id="manualEntryBtn" style="margin-top:10px;">No REF or barcode on the item? Add it manually</button>
+    <div class="hint" id="hintText">Tap &#128247; Scan to read a barcode with the camera, or type a REF, barcode/GTIN, drug NDC (with or without dashes), or a drug name like &ldquo;venlafaxine 50&rdquo; &mdash; handy for pharmacy-repackaged unit doses that have no NDC. Scanning a full drug barcode also auto-fills the expiration date and lot #.</div>
     <div id="statusBox" class="status"></div>
   </div>
 
@@ -348,17 +384,9 @@
         <input id="manualName" type="text" placeholder="Enter item name">
       </div>
       <div class="field">
-        <label for="buildingInput">Building</label>
-        <select id="buildingInput">
-          <option value="">Select…</option>
-          <option value="B">Bunting (B)</option>
-          <option value="W">Weinberg (W)</option>
-          <option value="A">McAuley (A)</option>
-        </select>
-      </div>
-      <div class="field">
         <label for="floorInput">Floor #</label>
-        <input id="floorInput" inputmode="numeric" placeholder="e.g. 9">
+        <input id="floorInput" list="floorSuggestions" placeholder="e.g. 3">
+        <datalist id="floorSuggestions"></datalist>
       </div>
       <div class="field">
         <label for="roomInput">Room</label>
@@ -373,6 +401,10 @@
       <div class="field">
         <label for="qtyInput">Quantity</label>
         <input id="qtyInput" type="number" min="1" value="1">
+      </div>
+      <div class="field">
+        <label for="lotInput">Lot # (optional)</label>
+        <input id="lotInput" type="text" autocapitalize="characters" spellcheck="false" placeholder="e.g. 529204">
       </div>
       <div class="field">
         <label for="reasonInput">Reason flagged</label>
@@ -450,7 +482,7 @@
   // between the quotes below. While it's blank the app works exactly as before
   // (entries stay only on this device). Once set, every logged item is also
   // sent to the floor's tab in the shared Google Sheet.
-  var SYNC_URL = "https://script.google.com/macros/s/AKfycbyHKr1N-6T_hv72K15cFtdWnDPtrnzGpat1VYYAkJME0viQt9k94pgGJC8uYN7wIGHgbg/exec";
+  var SYNC_URL = "";
   // -------------------------------------------------------------------------
 
   function loadEntries(){
@@ -546,6 +578,7 @@
   var settings = loadSettings();
   var currentMatch = null;
   var idMode = "auto";
+  var pendingScan = null;   // exp date / lot parsed out of a scanned GS1 barcode
 
   var refInput = document.getElementById("refInput");
   var lookupBtn = document.getElementById("lookupBtn");
@@ -557,12 +590,13 @@
   var manualNameField = document.getElementById("manualNameField");
   var manualName = document.getElementById("manualName");
   var floorInput = document.getElementById("floorInput");
-  var buildingInput = document.getElementById("buildingInput");
+  var floorSuggestions = document.getElementById("floorSuggestions");
   var roomInput = document.getElementById("roomInput");
   var roomSuggestions = document.getElementById("roomSuggestions");
   var expInput = document.getElementById("expInput");
   var expConfirm = document.getElementById("expConfirm");
   var qtyInput = document.getElementById("qtyInput");
+  var lotInput = document.getElementById("lotInput");
   var reasonInput = document.getElementById("reasonInput");
   var loggedByInput = document.getElementById("loggedByInput");
   var notesInput = document.getElementById("notesInput");
@@ -593,15 +627,65 @@
   function clearStatus(){ statusBox.className = "status"; statusBox.textContent = ""; }
 
   // ---------- identifier helpers ----------
-  // Strip common GS1 barcode wrappers: a scanned/printed barcode often reads like
-  // (01)00817903010049(17)250801(10)C00243 — the (01) segment is the GTIN.
-  function extractGtinFromBarcode(raw){
-    var s = raw.replace(/\s+/g, "");
-    var m = s.match(/\(01\)(\d{14})/);
-    if(m) return m[1];
-    // sometimes pasted without parentheses, starting 01 + 14 digits
-    m = s.match(/^01(\d{14})/);
-    if(m) return m[1];
+  // Parse a GS1 barcode string into its parts. Drug packages print these two ways:
+  //   human-readable:  (01)00351079632013(17)270331(10)3116457
+  //   scanner output:  0100351079632013172703311031164 57   (AIs run together,
+  //                    variable fields separated by an invisible GS character)
+  // We pull out the GTIN (01), expiration date (17), lot (10) and serial (21) so
+  // the site can look the drug up AND pre-fill the expiration/lot fields.
+  function parseGS1(raw){
+    var s = String(raw == null ? "" : raw).replace(/\s+/g, "");
+    if(!s) return null;
+    var out = { gtin:null, exp:null, lot:null, serial:null };
+    var m;
+    if(s.indexOf("(") !== -1){
+      if((m = s.match(/\(01\)(\d{14})/)))   out.gtin = m[1];
+      if((m = s.match(/\(17\)(\d{6})/)))    out.exp = gs1DateToISO(m[1]);
+      if((m = s.match(/\(10\)([^\(]{1,20})/))) out.lot = m[1];
+      if((m = s.match(/\(21\)([^\(]{1,20})/))) out.serial = m[1];
+      return out.gtin ? out : null;
+    }
+    if(!/^01\d{14}/.test(s)) return null;
+    out.gtin = s.slice(2, 16);
+    var rest = s.slice(16);
+    var FIXED = { "11":6, "13":6, "15":6, "17":6 };  // fixed-length date AIs
+    while(rest.length >= 2){
+      if(rest.charCodeAt(0) === 29){ rest = rest.slice(1); continue; } // GS separator
+      var ai = rest.slice(0, 2);
+      if(FIXED[ai] !== undefined){
+        if(ai === "17") out.exp = gs1DateToISO(rest.slice(2, 8));
+        rest = rest.slice(2 + FIXED[ai]);
+      }else if(ai === "10" || ai === "21"){
+        var gsAt = rest.indexOf(String.fromCharCode(29));
+        var val = gsAt === -1 ? rest.slice(2) : rest.slice(2, gsAt);
+        if(ai === "10") out.lot = val; else out.serial = val;
+        rest = gsAt === -1 ? "" : rest.slice(gsAt + 1);
+      }else{
+        break; // unknown AI — keep what we already parsed
+      }
+    }
+    return out;
+  }
+  // GS1 dates are YYMMDD; a day of "00" means "end of that month".
+  function gs1DateToISO(yymmdd){
+    if(!/^\d{6}$/.test(yymmdd)) return null;
+    var year = 2000 + parseInt(yymmdd.slice(0, 2), 10);
+    var mm = yymmdd.slice(2, 4), dd = yymmdd.slice(4, 6);
+    var mNum = parseInt(mm, 10);
+    if(mNum < 1 || mNum > 12) return null;
+    if(dd === "00") dd = String(new Date(year, mNum, 0).getDate());
+    if(dd.length < 2) dd = "0" + dd;
+    return year + "-" + mm + "-" + dd;
+  }
+  // US drug barcodes embed the NDC inside the GTIN:
+  //   GTIN-14:  <pack level digit> + "03" + 10-digit NDC + check digit
+  //   UPC-12:   "3" + 10-digit NDC + check digit
+  // Returns the 10-digit NDC, or null if this isn't a drug GTIN.
+  function ndc10FromGtin(g){
+    var d = digitsOnly(String(g == null ? "" : g));
+    if(d.length === 13 && d.charAt(0) === "0") d = d.slice(1); // EAN-13 wrapper of a UPC
+    if(d.length === 14 && d.slice(1, 3) === "03") return d.slice(3, 13);
+    if(d.length === 12 && d.charAt(0) === "3")    return d.slice(1, 11);
     return null;
   }
   function digitsOnly(s){ return s.replace(/[^0-9]/g, ""); }
@@ -645,21 +729,50 @@
     return cands.filter(function(v,i){ return cands.indexOf(v) === i; });
   }
 
+  // Full package-level dashed candidates (labeler-product-package). Used for
+  // openFDA packaging.package_ndc queries and for NLM RxNav (which also keeps
+  // *historical* NDCs — important since we're logging expired drugs that may
+  // have dropped out of the current FDA directory).
+  function ndcPackageCandidates(raw){
+    var s = raw.trim();
+    var out = [];
+    if(s.indexOf("-") !== -1){
+      if(/^\d{4,5}-\d{3,4}-\d{1,2}$/.test(s)) out.push(s);
+      else if(/^\d{4,5}-\d{3,4}$/.test(s)) out.push(s);   // 2-segment; RxNav accepts NDC9
+      return out;
+    }
+    var d = digitsOnly(s);
+    if(d.length === 11){
+      var a = d.slice(0,5), b = d.slice(5,9), c = d.slice(9);
+      out.push(a + "-" + b + "-" + c);                              // 5-4-2 billing form
+      if(a.charAt(0) === "0") out.push(a.slice(1) + "-" + b + "-" + c); // 4-4-2
+      if(b.charAt(0) === "0") out.push(a + "-" + b.slice(1) + "-" + c); // 5-3-2
+      if(c.charAt(0) === "0") out.push(a + "-" + b + "-" + c.slice(1)); // 5-4-1
+    }else if(d.length === 10){
+      out.push(d.slice(0,4) + "-" + d.slice(4,8) + "-" + d.slice(8)); // 4-4-2
+      out.push(d.slice(0,5) + "-" + d.slice(5,8) + "-" + d.slice(8)); // 5-3-2
+      out.push(d.slice(0,5) + "-" + d.slice(5,9) + "-" + d.slice(9)); // 5-4-1
+    }
+    return out.filter(function(v,i){ return out.indexOf(v) === i; });
+  }
+
   // Is this plausibly an NDC entered without dashes? 10 or 11 pure digits that
   // we haven't already claimed as a GTIN (12/14 digits).
   function looksLikeBareNDC(d){ return d.length === 10 || d.length === 11; }
 
   function detectMode(raw){
     var s = raw.trim();
-    if(extractGtinFromBarcode(s)) return "gtin";
+    if(parseGS1(s)) return "gtin";
     var d = digitsOnly(s);
-    // NDC with dashes, e.g. 0409-4887-10
-    if(/^\d{4,5}-\d{3,4}-\d{1,2}$/.test(s)) return "ndc";
-    // GTIN: 12 or 14 pure digits
-    if(/^\d{12}$/.test(d) || /^\d{14}$/.test(d)) return "gtin";
+    // NDC with dashes, e.g. 0409-4887-10 (or 2-segment 0409-4887)
+    if(/^\d{4,5}-\d{3,4}(-\d{1,2})?$/.test(s)) return "ndc";
+    // GTIN: 12, 13 (EAN wrapper) or 14 pure digits
+    if(/^\d{12,14}$/.test(d)) return "gtin";
     // 11-digit bare number is most likely a billing-format NDC (5-4-2)
     if(/^\d{11}$/.test(d)) return "ndc";
-    // contains letters -> catalog ref
+    // words (no digits, or letters + a space like "venlafaxine 50") -> drug name
+    if(/[A-Za-z]/.test(s) && (!/\d/.test(s) || /\s/.test(s))) return "name";
+    // letters mixed into a code (e.g. MSC092208) -> catalog ref
     if(/[A-Za-z]/.test(s)) return "ref";
     // short numeric -> catalog ref (e.g. 367988, 415303)
     return "ref";
@@ -670,11 +783,12 @@
     var raw = refInput.value.trim();
     if(!raw){ refInput.focus(); return; }
     currentMatch = null;
+    pendingScan = parseGS1(raw);   // grab exp/lot from a scanned barcode, if present
     lookupBtn.disabled = true;
     resultArea.classList.remove("show");
 
     var mode = (idMode === "auto") ? detectMode(raw) : idMode;
-    var modeLabel = { ref:"catalog/REF", gtin:"GTIN/barcode", ndc:"NDC" }[mode] || mode;
+    var modeLabel = { ref:"catalog/REF", gtin:"GTIN/barcode", ndc:"NDC", name:"drug name" }[mode] || mode;
     setStatus("Searching as " + modeLabel + "…", "searching");
 
     var p;
@@ -682,15 +796,27 @@
       p = lookupNDC(raw);
     }else if(mode === "gtin"){
       p = lookupGTIN(raw);
+    }else if(mode === "name"){
+      p = lookupName(raw).then(function(r){
+        // pure-letter catalog REFs exist too — try the device catalog before giving up
+        return (r === "empty") ? lookupCatalog(raw) : r;
+      });
     }else{
-      p = lookupCatalog(raw);
+      p = lookupCatalog(raw).then(function(r){
+        // a bare 10/11-digit number that isn't a known catalog REF may be an NDC
+        return (r === "empty" && looksLikeBareNDC(digitsOnly(raw))) ? lookupNDC(raw) : r;
+      });
     }
 
     p.then(function(handled){
       lookupBtn.disabled = false;
       if(handled === "empty"){
         clearStatus();
-        setStatus("No match found in the FDA database for that " + modeLabel + ". It may not be registered (older stock, exempt item, or a manufacturer gap). Enter the details manually below.", "warn");
+        if(mode === "name"){
+          setStatus("No drug matching that name was found. Check the spelling, or enter the details manually below.", "warn");
+        }else{
+          setStatus("No match found in the FDA or NLM databases for that " + modeLabel + ". Hospital-repackaged items (unit-dose labels marked “MMC Pharmacy”) and supplements aren't registered — try the Drug name chip, or enter the details manually below.", "warn");
+        }
         openManualEntry(raw);
       }
     }).catch(function(){
@@ -740,54 +866,139 @@
     });
   }
 
-  // GTIN / barcode lookup — searches the identifiers array (DI/GTIN values live there)
+  // GTIN / barcode lookup. Drug barcodes carry an NDC inside the GTIN, so those
+  // go to the drug databases first; everything else goes to the device UDI
+  // database, then falls back to a catalog-number search.
   function lookupGTIN(raw){
-    var gtin = extractGtinFromBarcode(raw) || digitsOnly(raw);
-    var url = "https://api.fda.gov/device/udi.json?search="
-      + encodeURIComponent('identifiers.id:"' + gtin + '"') + "&limit=10";
-    return fdaFetch(url).then(function(data){
-      var results = (data && data.results) ? data.results : [];
-      if(results.length === 0){
-        // fall back to trying it as a catalog number, just in case
-        return lookupCatalog(raw);
-      }
-      handleDeviceResults(results, gtin, false);
-      return "ok";
+    var parsed = parseGS1(raw);
+    var gtin = (parsed && parsed.gtin) ? parsed.gtin : digitsOnly(raw);
+    var ndc10 = ndc10FromGtin(gtin);
+
+    function deviceLookup(){
+      // GS1 device identifiers are stored 14-digit in the UDI database
+      var deviceId = (gtin.length === 12 || gtin.length === 13)
+        ? ("00000000000000" + gtin).slice(-14) : gtin;
+      var url = "https://api.fda.gov/device/udi.json?search="
+        + encodeURIComponent('identifiers.id:"' + deviceId + '"') + "&limit=10";
+      return fdaFetch(url).then(function(data){
+        var results = (data && data.results) ? data.results : [];
+        if(results.length === 0) return "empty";
+        handleDeviceResults(results, gtin, false);
+        return "ok";
+      });
+    }
+
+    if(ndc10){
+      // This GTIN encodes an NDC — it's a drug barcode.
+      return lookupNDC(ndc10).then(function(r){
+        if(r === "ok") return "ok";
+        return deviceLookup().then(function(r2){
+          return (r2 === "ok") ? "ok" : lookupCatalog(raw);
+        });
+      });
+    }
+    return deviceLookup().then(function(r){
+      return (r === "ok") ? "ok" : lookupCatalog(raw);
     });
   }
 
-  // NDC drug lookup. Handles dashed (0409-4887-10) and bare (00409488710) forms.
-  // openFDA's product_ndc is the dashed labeler-product (e.g. 0409-4887). We generate
-  // candidate splits, try each, and fall back to a package-level match on the full code.
+  // NDC drug lookup. Handles dashed (0409-4887-10) and bare (00409488710) forms,
+  // including 10-digit NDCs pulled out of drug barcodes. Search order:
+  //   1. openFDA product-level (product_ndc) for each candidate split
+  //   2. openFDA package-level (packaging.package_ndc)
+  //   3. NLM RxNav ndcstatus — keeps HISTORICAL NDCs, so discontinued/expired
+  //      drugs that have dropped out of the FDA directory still resolve.
   function lookupNDC(raw){
     var ndc = raw.trim();
-    var candidates = ndcProductCandidates(ndc);
+    var prodCands = ndcProductCandidates(ndc);
+    var pkgCands = ndcPackageCandidates(ndc);
 
-    function tryNext(i){
-      if(i >= candidates.length){
-        // package-level fallback using the full code (dashed forms only work here)
-        if(ndc.indexOf("-") !== -1){
-          var url2 = "https://api.fda.gov/drug/ndc.json?search="
-            + encodeURIComponent('packaging.package_ndc:"' + ndc + '"') + "&limit=5";
-          return fdaFetch(url2).then(function(d2){
-            var r2 = (d2 && d2.results) ? d2.results : [];
-            if(r2.length === 0) return "empty";
-            handleDrugResults(r2, ndc);
-            return "ok";
-          });
-        }
-        return Promise.resolve("empty");
-      }
-      var productNdc = candidates[i];
+    function tryProduct(i){
+      if(i >= prodCands.length) return tryPackage(0);
       var url = "https://api.fda.gov/drug/ndc.json?search="
-        + encodeURIComponent('product_ndc:"' + productNdc + '"') + "&limit=5";
+        + encodeURIComponent('product_ndc:"' + prodCands[i] + '"') + "&limit=5";
       return fdaFetch(url).then(function(data){
         var results = (data && data.results) ? data.results : [];
-        if(results.length > 0){ handleDrugResults(results, productNdc); return "ok"; }
-        return tryNext(i + 1);
+        if(results.length > 0){ handleDrugResults(results, prodCands[i]); return "ok"; }
+        return tryProduct(i + 1);
       });
     }
-    return tryNext(0);
+    function tryPackage(i){
+      if(i >= pkgCands.length) return tryRxNav(0);
+      var url = "https://api.fda.gov/drug/ndc.json?search="
+        + encodeURIComponent('packaging.package_ndc:"' + pkgCands[i] + '"') + "&limit=5";
+      return fdaFetch(url).then(function(data){
+        var results = (data && data.results) ? data.results : [];
+        if(results.length > 0){ handleDrugResults(results, pkgCands[i]); return "ok"; }
+        return tryPackage(i + 1);
+      }).catch(function(){ return tryPackage(i + 1); });
+    }
+    function tryRxNav(i){
+      if(i >= pkgCands.length) return Promise.resolve("empty");
+      return fetch("https://rxnav.nlm.nih.gov/REST/ndcstatus.json?ndc=" + encodeURIComponent(pkgCands[i]))
+        .then(function(res){
+          if(!res.ok) throw new Error("rxnav " + res.status);
+          return res.json();
+        })
+        .then(function(data){
+          var st = data && data.ndcStatus;
+          if(st && st.conceptName && st.status && st.status.toUpperCase() !== "UNKNOWN"){
+            selectDrugRxNav(st, ndc);
+            return "ok";
+          }
+          return tryRxNav(i + 1);
+        })
+        .catch(function(){ return tryRxNav(i + 1); });
+    }
+    return tryProduct(0);
+  }
+
+  // Drug name search — the practical route for hospital-repackaged unit doses
+  // (e.g. "venlafaxine 50") whose internal barcodes carry no NDC. Letters form
+  // the name; a number, if given, is treated as a strength hint for ranking.
+  function lookupName(raw){
+    var words = raw.match(/[A-Za-z][A-Za-z\-']*/g) || [];
+    if(words.length === 0) return Promise.resolve("empty");
+    var phrase = words.join(" ");
+    var strengthHint = (raw.match(/\d+(\.\d+)?/) || [null])[0];
+    var url = "https://api.fda.gov/drug/ndc.json?search="
+      + encodeURIComponent('brand_name:"' + phrase + '"')
+      + "+" + encodeURIComponent('generic_name:"' + phrase + '"')
+      + "&limit=50";
+
+    function strengthOf(r){
+      return (r.active_ingredients && r.active_ingredients[0]) ? String(r.active_ingredients[0].strength || "") : "";
+    }
+    function matchesHint(r){
+      if(!strengthHint) return 0;
+      return (new RegExp("(^|[^0-9.])" + strengthHint.replace(".", "\\.") + "([^0-9]|$)")).test(strengthOf(r)) ? 1 : 0;
+    }
+
+    return fdaFetch(url).then(function(data){
+      var results = (data && data.results) ? data.results : [];
+      if(results.length === 0) return "empty";
+      // Collapse duplicates: many labelers sell the same generic. One entry per
+      // name + strength + dosage form is enough to identify the drug being logged.
+      var seen = {}, unique = [];
+      results.forEach(function(r){
+        var key = ((r.generic_name || r.brand_name || "") + "|" + strengthOf(r) + "|" + (r.dosage_form || "")).toLowerCase();
+        if(seen[key]) return;
+        seen[key] = true;
+        unique.push(r);
+      });
+      unique.sort(function(a, b){ return matchesHint(b) - matchesHint(a); });
+      var top = unique.slice(0, 8);
+      clearStatus();
+      if(top.length === 1){ selectDrug(top[0], raw); return "ok"; }
+      showCandidates(top.map(function(r){
+        var strength = strengthOf(r);
+        var label = (r.brand_name || r.generic_name || "Unnamed drug")
+          + (strength ? " · " + strength : "")
+          + (r.dosage_form ? " · " + r.dosage_form.toLowerCase() : "");
+        return { name: label, company: (r.labeler_name || "Unknown labeler"), raw: r, kind: "drug" };
+      }), raw, false);
+      return "ok";
+    });
   }
 
   function deviceName(r){ return r.brand_name || r.device_description || "Unnamed device"; }
@@ -830,9 +1041,26 @@
       selectDrug(results[0], idEntered);
     }else{
       showCandidates(results.map(function(r){
-        return { name: (r.brand_name || r.generic_name || "Unnamed drug"), company: (r.labeler_name || "Unknown labeler"), raw: r, kind: "drug" };
+        var strength = (r.active_ingredients && r.active_ingredients[0]) ? r.active_ingredients[0].strength : "";
+        return { name: (r.brand_name || r.generic_name || "Unnamed drug") + (strength ? " · " + strength : ""), company: (r.labeler_name || "Unknown labeler"), raw: r, kind: "drug" };
       }), idEntered, false);
     }
+  }
+
+  // A match that only exists in NLM's historical database — typical for expired
+  // stock whose NDC has been retired from the current FDA directory.
+  function selectDrugRxNav(st, idEntered){
+    var ndc11 = String(st.ndc11 || "");
+    var dashed = (ndc11.length === 11)
+      ? ndc11.slice(0,5) + "-" + ndc11.slice(5,9) + "-" + ndc11.slice(9)
+      : (ndc11 || idEntered);
+    var name = st.conceptName || "Unnamed drug";
+    var older = st.status && st.status.toUpperCase() !== "ACTIVE";
+    currentMatch = { name: name, company: "", idNumber: dashed, idType: "NDC", idEntered: idEntered };
+    renderMatchCard("Drug match found (NLM)", name,
+      "Matched in the NLM RxNav database" + (older ? " · older/discontinued listing — verify against the label" : ""),
+      "NDC " + dashed);
+    focusFormFirstField();
   }
 
   function showCandidates(cands, idEntered, approximate){
@@ -897,21 +1125,16 @@
   }
 
   function openManualEntry(idEntered){
-    idEntered = (idEntered || "").trim();
     currentMatch = { name: "", company: "", idNumber: idEntered, idType: "Manual", idEntered: idEntered, manual: true };
-    var idLine = idEntered
-      ? 'ID entered: ' + escapeHtml(idEntered)
-      : 'No REF or barcode — identified by item name';
     matchSlot.innerHTML =
       '<div class="match-card" style="background:var(--flag-soft); border-color:#EFD2B4;">' +
         '<div class="label" style="color:var(--flag);">Manual entry</div>' +
-        '<div class="ref">' + idLine + '</div>' +
+        '<div class="ref">ID entered: ' + escapeHtml(idEntered) + '</div>' +
       '</div>';
     manualNameField.style.display = "block";
     manualName.value = "";
     resultArea.classList.add("show");
-    focusFormFirstField();   // reset floor/room/exp/qty so nothing carries over
-    manualName.focus();      // ...but land the cursor on the name, not the floor
+    manualName.focus();
   }
 
   // Mirror the value the form will ACTUALLY log. On iOS the native date
@@ -923,7 +1146,9 @@
     var v = expInput.value;
     if(v){
       var parts = v.split("-"); // yyyy-mm-dd
-      expConfirm.textContent = "Will log expiration: " + parts[1] + "/" + parts[2] + "/" + parts[0];
+      var fromScan = pendingScan && pendingScan.exp === v;
+      expConfirm.textContent = "Will log expiration: " + parts[1] + "/" + parts[2] + "/" + parts[0]
+        + (fromScan ? " (auto-filled from barcode — check it matches the package)" : "");
       expConfirm.style.color = "var(--found)";
     }else{
       expConfirm.textContent = "No expiration date set yet.";
@@ -932,11 +1157,11 @@
   }
 
   function focusFormFirstField(){
-    buildingInput.value = settings.lastBuilding || "";
     floorInput.value = settings.lastFloor || "";
     roomInput.value = settings.lastRoom || "";
-    expInput.value = "";
+    expInput.value = (pendingScan && pendingScan.exp) ? pendingScan.exp : "";
     qtyInput.value = 1;
+    lotInput.value = (pendingScan && pendingScan.lot) ? pendingScan.lot : "";
     reasonInput.value = "Expired";
     notesInput.value = "";
     updateExpConfirm();
@@ -948,10 +1173,7 @@
     if(!currentMatch){ return; }
     var name = currentMatch.manual ? manualName.value.trim() : currentMatch.name;
     if(!name){ setStatus("Enter an item name before logging.", "warn"); manualName.focus(); return; }
-    var buildingCode = buildingInput.value.trim().toUpperCase();
-    var floorNum = floorInput.value.trim();
-    if(floorNum && !buildingCode){ setStatus("Pick the building (Bunting, Weinberg, or McAuley) for this floor.", "warn"); buildingInput.focus(); return; }
-    if(!floorNum && !roomInput.value.trim()){ setStatus("Enter the building + floor and/or room where this item was found before logging.", "warn"); buildingInput.focus(); return; }
+    if(!floorInput.value.trim() && !roomInput.value.trim()){ setStatus("Enter the floor and/or room where this item was found before logging.", "warn"); floorInput.focus(); return; }
 
     var idNumber = currentMatch.idNumber || currentMatch.idEntered || "";
     var idType = currentMatch.idType || "";
@@ -969,29 +1191,22 @@
       if(!window.confirm(msg)){ expInput.focus(); updateExpConfirm(); return; }
     }
     var qtyAdded = parseInt(qtyInput.value, 10) || 1;
-    var floorVal = buildingCode + floorNum;   // canonical "B9", "W3", "A12"
+    var floorVal = floorInput.value.trim();
     var roomVal = roomInput.value.trim();
+    var lotVal = lotInput.value.trim();
     var locLabel = [floorVal ? "Floor " + floorVal : "", roomVal].filter(Boolean).join(" · ");
     var notesVal = notesInput.value.trim();
     var loggedByVal = loggedByInput.value.trim();
     var now = new Date().toISOString();
 
-    // Merge only when item ID, expiration AND initials all match — same rule
-    // as the shared sheet. Different expiration or different initials = new row.
-    // Initials are compared case-insensitively, so "BA" and "ba" are the same
-    // logger (matches the sheet's norm() comparison).
-    var byKey = loggedByVal.toLowerCase();
-    var nameKey = name.trim().toLowerCase();
+    // Merge only when item ID, expiration, lot AND initials all match — same
+    // rule as the shared sheet. Any difference = new row (recalls are lot-based,
+    // so different lots of the same drug must stay separate).
     var existingIdx = entries.findIndex(function(e){
-      // Items with a REF/barcode match on that ID. Manual items with no ID
-      // match on their name instead, so two different unlabeled items never
-      // merge together (and a no-ID item never folds into a REF'd one).
-      var sameItem = idNumber
-        ? (e.idNumber === idNumber)
-        : (!e.idNumber && (e.itemName || "").trim().toLowerCase() === nameKey);
-      return sameItem &&
+      return e.idNumber === idNumber &&
              e.expiration === expiration &&
-             ((((e.loggedBy && e.loggedBy[0]) || "").toLowerCase()) === byKey);
+             ((e.lot || "") === lotVal) &&
+             (((e.loggedBy && e.loggedBy[0]) || "") === loggedByVal);
     });
 
     var mergedQty;
@@ -1001,7 +1216,7 @@
       mergedQty = e.quantity;
       if(locLabel && e.locations.indexOf(locLabel) === -1) e.locations.push(locLabel);
       if(notesVal && e.notes.indexOf(notesVal) === -1) e.notes.push(notesVal);
-      if(loggedByVal && !e.loggedBy.some(function(x){ return x.toLowerCase() === byKey; })) e.loggedBy.push(loggedByVal);
+      if(loggedByVal && e.loggedBy.indexOf(loggedByVal) === -1) e.loggedBy.push(loggedByVal);
       e.reason = reasonInput.value;
       e.lastLoggedAt = now;
       e.timesLogged = (e.timesLogged || 1) + 1;
@@ -1015,6 +1230,7 @@
         idNumber: idNumber,
         idType: idType,
         expiration: expiration,
+        lot: lotVal,
         quantity: qtyAdded,
         reason: reasonInput.value,
         floor: floorVal,
@@ -1041,6 +1257,7 @@
       floor: floorVal,
       room: roomVal,
       expiration: expiration,
+      lot: lotVal,
       quantity: qtyAdded,
       reason: reasonInput.value,
       notes: notesVal,
@@ -1048,8 +1265,7 @@
     });
 
     settings.loggedBy = loggedByVal;
-    settings.lastBuilding = buildingCode;
-    settings.lastFloor = floorNum;
+    settings.lastFloor = floorVal;
     settings.lastRoom = roomVal;
     saveSettings(settings);
     refreshLocationSuggestions();
@@ -1063,6 +1279,7 @@
 
   function resetScan(){
     currentMatch = null;
+    pendingScan = null;
     resultArea.classList.remove("show");
     refInput.value = "";
     refInput.focus();
@@ -1080,9 +1297,10 @@
     var rows = entries.map(function(e){
       var scanTag = e.timesLogged > 1 ? ' <span style="color:var(--ink-soft); font-weight:400; font-style:italic;">(merged &times;' + e.timesLogged + ')</span>' : '';
       var typeTag = e.idType ? '<br><span style="color:var(--ink-soft); font-weight:400; font-size:10px;">' + escapeHtml(e.idType) + '</span>' : '';
+      var lotTag = e.lot ? '<br><span style="color:var(--ink-soft); font-weight:400; font-size:10px;">Lot ' + escapeHtml(e.lot) + '</span>' : '';
       return '<tr>' +
         '<td class="item-name">' + escapeHtml(e.itemName) + scanTag + (e.company ? '<br><span style="color:var(--ink-soft); font-weight:400;">' + escapeHtml(e.company) + '</span>' : '') + '</td>' +
-        '<td class="ref-cell">' + escapeHtml(e.idNumber) + typeTag + '</td>' +
+        '<td class="ref-cell">' + escapeHtml(e.idNumber) + typeTag + lotTag + '</td>' +
         '<td>' + escapeHtml((e.locations||[]).join(', ')) + '</td>' +
         '<td>' + escapeHtml(e.expiration) + '</td>' +
         '<td>' + escapeHtml(e.quantity) + '</td>' +
@@ -1101,10 +1319,14 @@
   }
 
   function refreshLocationSuggestions(){
-    var rooms = {};
+    var floors = {}, rooms = {};
     entries.forEach(function(e){
+      if(e.floor) floors[e.floor] = true;
       if(e.room) rooms[e.room] = true;
     });
+    floorSuggestions.innerHTML = Object.keys(floors).map(function(v){
+      return '<option value="' + escapeHtml(v) + '"></option>';
+    }).join("");
     roomSuggestions.innerHTML = Object.keys(rooms).map(function(v){
       return '<option value="' + escapeHtml(v) + '"></option>';
     }).join("");
@@ -1127,6 +1349,7 @@
       { header:"Manufacturer",    key:"mfr",   width:24 },
       { header:"ID Number",       key:"id",    width:16 },
       { header:"ID Type",         key:"type",  width:12 },
+      { header:"Lot #",           key:"lot",   width:14 },
       { header:"Floor",           key:"floor", width:8  },
       { header:"Room",            key:"room",  width:16 },
       { header:"Expiration Date", key:"exp",   width:14 },
@@ -1144,6 +1367,7 @@
         mfr:   e.company,
         id:    e.idNumber,
         type:  e.idType,
+        lot:   e.lot || "",
         floor: e.floor || "",
         room:  e.room || "",
         exp:   e.expiration,
@@ -1189,13 +1413,102 @@
     });
   }
 
+  // ---------- camera barcode scanning ----------
+  // Uses the html5-qrcode library (loaded from the CDN in <head>). Works on any
+  // HTTPS host, including GitHub Pages. Reads the linear barcodes AND the small
+  // square DataMatrix codes used on drug packages, then runs the normal lookup —
+  // so a GS1 scan also auto-fills the expiration date and lot #.
+  var cameraBtn = document.getElementById("cameraBtn");
+  var scannerBox = document.getElementById("scannerBox");
+  var closeScanBtn = document.getElementById("closeScanBtn");
+  var scanner = null;
+  var scannerRunning = false;
+
+  function openScanner(){
+    if(typeof Html5Qrcode === "undefined"){
+      setStatus("The camera scanning library didn't load (no internet when the page opened). Reconnect and reload the page, or type the number instead.", "err");
+      return;
+    }
+    clearStatus();
+    scannerBox.style.display = "block";
+    cameraBtn.disabled = true;
+    if(!scanner){
+      var F = Html5QrcodeSupportedFormats;
+      scanner = new Html5Qrcode("cameraView", {
+        formatsToSupport: [ F.DATA_MATRIX, F.QR_CODE, F.CODE_128, F.CODE_39,
+                            F.EAN_13, F.EAN_8, F.UPC_A, F.UPC_E, F.ITF ],
+        // Use the browser's built-in barcode detector when available — it is
+        // much better at the small DataMatrix squares on drug packages.
+        experimentalFeatures: { useBarCodeDetectorIfSupported: true },
+        verbose: false
+      });
+    }
+    scanner.start(
+      { facingMode: "environment" },
+      { fps: 10,
+        // Ask for an HD feed — tiny DataMatrix codes need the extra pixels.
+        videoConstraints: { facingMode: "environment", width: { ideal: 1920 }, height: { ideal: 1080 } },
+        qrbox: function(w, h){ return { width: Math.floor(w * 0.85), height: Math.floor(Math.min(h * 0.6, 260)) }; } },
+      function(decodedText){
+        if(!scannerRunning) return;      // ignore repeat reads of the same frame
+        scannerRunning = false;
+        if(navigator.vibrate) navigator.vibrate(80);
+        closeScanner();
+        refInput.value = decodedText;
+        doLookup();
+      },
+      function(){ /* no barcode in this frame — normal, keep watching */ }
+    ).then(function(){
+      scannerRunning = true;
+      showZoomIfSupported();
+    }).catch(function(err){
+      cameraBtn.disabled = false;
+      scannerBox.style.display = "none";
+      var msg = String(err || "");
+      if(/notallowed|permission|denied/i.test(msg)){
+        setStatus("Camera permission was denied. Allow camera access for this site in your browser settings, then try again.", "err");
+      }else{
+        setStatus("Couldn't open the camera (" + msg + "). You can still type the number.", "err");
+      }
+    });
+  }
+
+  function closeScanner(){
+    scannerRunning = false;
+    cameraBtn.disabled = false;
+    scannerBox.style.display = "none";
+    if(scanner){ scanner.stop().catch(function(){}); }
+  }
+
+  // Camera zoom — the practical fix for tiny DataMatrix codes: phones can't
+  // focus close enough at 1×, but 2–3× zoom lets you hold the phone farther
+  // away (where it CAN focus) while the code still fills the frame.
+  var zoomRow = document.getElementById("zoomRow");
+  function showZoomIfSupported(){
+    zoomRow.style.display = "none";
+    try{
+      var caps = scanner.getRunningTrackCapabilities();
+      if(caps && caps.zoom && caps.zoom.max > 1) zoomRow.style.display = "flex";
+    }catch(e){}
+  }
+  Array.prototype.forEach.call(zoomRow.querySelectorAll("button"), function(b){
+    b.addEventListener("click", function(){
+      var z = parseFloat(b.getAttribute("data-zoom"));
+      try{
+        var caps = scanner.getRunningTrackCapabilities();
+        if(caps && caps.zoom) z = Math.min(Math.max(z, caps.zoom.min || 1), caps.zoom.max || z);
+      }catch(e){}
+      scanner.applyVideoConstraints({ advanced: [{ zoom: z }] }).catch(function(){});
+      Array.prototype.forEach.call(zoomRow.querySelectorAll("button"), function(x){ x.classList.remove("active"); });
+      b.classList.add("active");
+    });
+  });
+
+  cameraBtn.addEventListener("click", openScanner);
+  closeScanBtn.addEventListener("click", closeScanner);
+
   lookupBtn.addEventListener("click", doLookup);
   refInput.addEventListener("keydown", function(e){ if(e.key === "Enter"){ e.preventDefault(); doLookup(); } });
-  document.getElementById("manualEntryBtn").addEventListener("click", function(){
-    clearStatus();
-    refInput.value = "";
-    openManualEntry("");   // no REF/barcode — go straight to manual entry
-  });
   expInput.addEventListener("input", updateExpConfirm);
   expInput.addEventListener("change", updateExpConfirm);
   expInput.addEventListener("blur", updateExpConfirm);
