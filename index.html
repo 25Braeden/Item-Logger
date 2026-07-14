@@ -232,6 +232,17 @@
     background:#fff;
   }
   .field textarea{ resize:vertical; min-height:38px; }
+  /* Make dropdowns render exactly like the text inputs (Safari/iOS ignore the
+     padding and border styling above unless the native look is turned off). */
+  .field select{
+    -webkit-appearance:none;
+    -moz-appearance:none;
+    appearance:none;
+    height:auto;
+    background:#fff url("data:image/svg+xml;charset=utf-8,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Cpath d='M1 1.5l5 5 5-5' fill='none' stroke='%235C7B85' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E") no-repeat right 10px center;
+    background-size:12px 8px;
+    padding-right:32px; /* room for the chevron */
+  }
   .field input:focus, .field select:focus, .field textarea:focus{
     outline:none;
     border-color:var(--brand);
@@ -393,6 +404,15 @@
         <input id="manualName" type="text" placeholder="Enter item name">
       </div>
       <div class="field">
+        <label for="buildingInput">Building</label>
+        <select id="buildingInput">
+          <option value="">&mdash; select &mdash;</option>
+          <option value="B">Bunting (B)</option>
+          <option value="A">McAuley (A)</option>
+          <option value="W">Weinberg (W)</option>
+        </select>
+      </div>
+      <div class="field">
         <label for="floorInput">Floor #</label>
         <input id="floorInput" list="floorSuggestions" placeholder="e.g. 3">
         <datalist id="floorSuggestions"></datalist>
@@ -491,7 +511,7 @@
   // between the quotes below. While it's blank the app works exactly as before
   // (entries stay only on this device). Once set, every logged item is also
   // sent to the floor's tab in the shared Google Sheet.
-  var SYNC_URL = "";
+  var SYNC_URL = "https://script.google.com/macros/s/AKfycbyHKr1N-6T_hv72K15cFtdWnDPtrnzGpat1VYYAkJME0viQt9k94pgGJC8uYN7wIGHgbg/exec";
   // -------------------------------------------------------------------------
 
   function loadEntries(){
@@ -598,6 +618,7 @@
   var matchSlot = document.getElementById("matchSlot");
   var manualNameField = document.getElementById("manualNameField");
   var manualName = document.getElementById("manualName");
+  var buildingInput = document.getElementById("buildingInput");
   var floorInput = document.getElementById("floorInput");
   var floorSuggestions = document.getElementById("floorSuggestions");
   var roomInput = document.getElementById("roomInput");
@@ -1166,6 +1187,7 @@
   }
 
   function focusFormFirstField(){
+    buildingInput.value = settings.lastBuilding || "";
     floorInput.value = settings.lastFloor || "";
     roomInput.value = settings.lastRoom || "";
     expInput.value = (pendingScan && pendingScan.exp) ? pendingScan.exp : "";
@@ -1182,6 +1204,7 @@
     if(!currentMatch){ return; }
     var name = currentMatch.manual ? manualName.value.trim() : currentMatch.name;
     if(!name){ setStatus("Enter an item name before logging.", "warn"); manualName.focus(); return; }
+    if(!buildingInput.value){ setStatus("Select the building where this item was found before logging.", "warn"); buildingInput.focus(); return; }
     if(!floorInput.value.trim() && !roomInput.value.trim()){ setStatus("Enter the floor and/or room where this item was found before logging.", "warn"); floorInput.focus(); return; }
 
     var idNumber = currentMatch.idNumber || currentMatch.idEntered || "";
@@ -1200,10 +1223,13 @@
       if(!window.confirm(msg)){ expInput.focus(); updateExpConfirm(); return; }
     }
     var qtyAdded = parseInt(qtyInput.value, 10) || 1;
+    var buildingVal = buildingInput.value;
     var floorVal = floorInput.value.trim();
     var roomVal = roomInput.value.trim();
     var lotVal = lotInput.value.trim();
-    var locLabel = [floorVal ? "Floor " + floorVal : "", roomVal].filter(Boolean).join(" · ");
+    // Location label matches the sheet tab naming: building letter + floor, e.g. "B10".
+    var bfLabel = buildingVal ? (buildingVal + floorVal) : (floorVal ? "Floor " + floorVal : "");
+    var locLabel = [bfLabel, roomVal].filter(Boolean).join(" · ");
     var notesVal = notesInput.value.trim();
     var loggedByVal = loggedByInput.value.trim();
     var now = new Date().toISOString();
@@ -1242,6 +1268,7 @@
         lot: lotVal,
         quantity: qtyAdded,
         reason: reasonInput.value,
+        building: buildingVal,
         floor: floorVal,
         room: roomVal,
         locations: locLabel ? [locLabel] : [],
@@ -1263,6 +1290,7 @@
       company: currentMatch.company || "",
       idNumber: idNumber,
       idType: idType,
+      building: buildingVal,
       floor: floorVal,
       room: roomVal,
       expiration: expiration,
@@ -1274,6 +1302,7 @@
     });
 
     settings.loggedBy = loggedByVal;
+    settings.lastBuilding = buildingVal;
     settings.lastFloor = floorVal;
     settings.lastRoom = roomVal;
     saveSettings(settings);
@@ -1359,6 +1388,7 @@
       { header:"ID Number",       key:"id",    width:16 },
       { header:"ID Type",         key:"type",  width:12 },
       { header:"Lot #",           key:"lot",   width:14 },
+      { header:"Building",        key:"building", width:10 },
       { header:"Floor",           key:"floor", width:8  },
       { header:"Room",            key:"room",  width:16 },
       { header:"Expiration Date", key:"exp",   width:14 },
@@ -1377,6 +1407,7 @@
         id:    e.idNumber,
         type:  e.idType,
         lot:   e.lot || "",
+        building: e.building || "",
         floor: e.floor || "",
         room:  e.room || "",
         exp:   e.expiration,
